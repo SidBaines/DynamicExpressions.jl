@@ -97,7 +97,7 @@ Create a leaf node: either a constant, or a variable.
 function Node(;
     val::T1=nothing, feature::T2=nothing
 )::Node where {T1,T2<:Union{Integer,Nothing}}
-    print("Hey look I'm creating a node!\n")
+    #print("Hey look I'm creating a node!\n")
     if T1 <: Nothing && T2 <: Nothing
         error("You must specify either `val` or `feature` when creating a leaf node.")
     elseif !(T1 <: Nothing || T2 <: Nothing)
@@ -113,7 +113,7 @@ end
 function Node(
     ::Type{T}; val::T1=nothing, feature::T2=nothing
 )::Node{T} where {T,T1,T2<:Union{Integer,Nothing}}
-    print("Hey look I'm creating a node!\n")
+    #print("Hey look I'm creating a node!\n")
     if T1 <: Nothing && T2 <: Nothing
         error("You must specify either `val` or `feature` when creating a leaf node.")
     elseif !(T1 <: Nothing || T2 <: Nothing)
@@ -144,7 +144,7 @@ Node(op::Integer, l::Node{T}) where {T} = Node(1, false, nothing, 0, op, l)
 Apply binary operator `op` (enumerating over the order given) to `Node`s `l` and `r`
 """
 function Node(op::Integer, l::Node{T1}, r::Node{T2}) where {T1,T2}
-    print("Hey look I'm creating a node!\n")
+    #print("Hey look I'm creating a node!\n")
     # Get highest type:
     if T1 != T2
         T = promote_type(T1, T2)
@@ -167,7 +167,7 @@ Node(var_string::String) = Node(; feature=parse(UInt16, var_string[2:end]))
 Create a variable node, using a user-passed format
 """
 function Node(var_string::String, variable_names::Array{String,1})
-    print("Hey look I'm creating a node!\n")
+    #print("Hey look I'm creating a node!\n")
     return Node(;
         feature=[
             i for (i, _variable) in enumerate(variable_names) if _variable == var_string
@@ -294,7 +294,7 @@ function string_tree(
     # Deprecated
     varMap=nothing,
 )::String where {T,F1<:Function,F2<:Function}
-    print("Hey look I'm printing a node!\n")
+    #print("Hey look I'm printing a node!\n")
     variable_names = deprecate_varmap(variable_names, varMap, :string_tree)
     if tree.degree == 0
         if !tree.constant
