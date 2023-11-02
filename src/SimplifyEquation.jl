@@ -43,12 +43,12 @@ function combine_operators(tree::Node{T}, operators::AbstractOperatorEnum) where
         # Simplify down first
         below = tree.children[1]
         if below.degree == 2 && below.op == op
-            if below.l.constant
+            if below.children[1].constant
                 tree = below
                 tree.children[1].val = _bin_op_kernel(
                     operators.binops[op], tree.children[1].val::T, topconstant
                 )
-            elseif below.r.constant
+            elseif below.children[2].constant
                 tree = below
                 tree.children[2].val = _bin_op_kernel(
                     operators.binops[op], tree.children[2].val::T, topconstant
@@ -62,39 +62,39 @@ function combine_operators(tree::Node{T}, operators::AbstractOperatorEnum) where
         # Not commutative, so use different op.
         if tree.children[1].constant
             if tree.children[2].degree == 2 && operators.binops[tree.children[2].op] == (-)
-                if tree.children[2].l.constant
+                if tree.children[2].children[1].constant
                     #(const - (const - var)) => (var - const)
                     l = tree.children[1]
                     r = tree.children[2]
-                    simplified_const = -(l.val::T - r.l.val::T) #neg(sub(l.val, r.l.val))
-                    tree.children[1] = tree.children[2].r
+                    simplified_const = -(l.val::T - r.children[1].val::T) #neg(sub(l.val, r.children[1].val))
+                    tree.children[1] = tree.children[2].children[2]
                     tree.children[2] = l
                     tree.children[2].val = simplified_const
-                elseif tree.children[2].r.constant
+                elseif tree.children[2].children[2].constant
                     #(const - (var - const)) => (const - var)
                     l = tree.children[1]
                     r = tree.children[2]
-                    simplified_const = l.val::T + r.r.val::T #plus(l.val, r.r.val)
-                    tree.children[2] = tree.children[2].l
+                    simplified_const = l.val::T + r.children[2].val::T #plus(l.val, r.children[2].val)
+                    tree.children[2] = tree.children[2].children[1]
                     tree.children[1].val = simplified_const
                 end
             end
         else #tree.children[2].constant is true
             if tree.children[1].degree == 2 && operators.binops[tree.children[1].op] == (-)
-                if tree.children[1].l.constant
+                if tree.children[1].children[1].constant
                     #((const - var) - const) => (const - var)
                     l = tree.children[1]
                     r = tree.children[2]
-                    simplified_const = l.l.val::T - r.val::T#sub(l.l.val, r.val)
-                    tree.children[2] = tree.children[1].r
+                    simplified_const = l.children[1].val::T - r.val::T#sub(l.children[1].val, r.val)
+                    tree.children[2] = tree.children[1].children[2]
                     tree.children[1] = r
                     tree.children[1].val = simplified_const
-                elseif tree.children[1].r.constant
+                elseif tree.children[1].children[2].constant
                     #((var - const) - const) => (var - const)
                     l = tree.children[1]
                     r = tree.children[2]
-                    simplified_const = r.val::T + l.r.val::T #plus(r.val, l.r.val)
-                    tree.children[1] = tree.children[1].l
+                    simplified_const = r.val::T + l.children[2].val::T #plus(r.val, l.children[2].val)
+                    tree.children[1] = tree.children[1].children[1]
                     tree.children[2].val = simplified_const
                 end
             end

@@ -138,11 +138,12 @@ function _eval_tree_array(
         return deg2_eval(cumulator_l, cumulator_r, op, Val(turbo))
     else # if degree > 2
         op = operators.multiops[tree.op]
-        cumulators = ()
+        cumulators = []
         for (nc, child) in enumerate(tree.children)
-            (cumulators[nc], complete) = _eval_tree_array(child, cX, operators, Val(turbo))
-            @return_on_false complete cumulators[nc]
-            @return_on_nonfinite_array cumulators[nc]
+            (cumulator, complete) = _eval_tree_array(child, cX, operators, Val(turbo))
+            @return_on_false complete cumulator
+            @return_on_nonfinite_array cumulator
+            push!(cumulators, cumulator)
         end
         degn_eval(Tuple(cumulator for cumulator in cumulators), op, Val(turbo))
     end
@@ -153,7 +154,8 @@ function degn_eval(
 )::Tuple{AbstractVector{T},Bool} where {T<:Number,F,turbo}
     cumulator_l = similar(cumulators[1])
     @maybe_turbo turbo for j in indices(cumulators[1])
-        x = op(Tuple(cumulator[j] for cumulator in cumulators)...)::T
+        inps = Tuple(cumulator[j] for cumulator in cumulators)
+        x = op(inps...)::T
         cumulator_l[j] = x
     end
     return (cumulator_l, true)
@@ -395,10 +397,12 @@ function degn_eval_constant(
 )::Tuple{T,Bool} where {T<:Number,F}
     cumulators = []
     for (cn, child) in enumerate(tree.children)
-        (cumulators[cn], complete) = _eval_constant_tree(child, operators)
+        (cumulator, complete) = _eval_constant_tree(child, operators)
         !complete && return zero(T), false
+        push!(cumulators, cumulator)
     end
-    output = op(Tuple(cumulator for cumulator in cumulators))::T
+    inps = Tuple(cumulator for cumulator in cumulators)
+    output = op(inps...)::T
     return output, isfinite(output)
 end
 
@@ -452,10 +456,12 @@ function degn_diff_eval(
 )::Tuple{AbstractVector{T},Bool} where {T<:Number,F,T1}
     cumulators = []
     for (cn, child) in enumerate(tree.children)
-        (cumulators[cn], complete) = differentiable_eval_tree_array(child, cX, operators)
+        (cumulator, complete) = differentiable_eval_tree_array(child, cX, operators)
+        push!(cumulators, cumulator)
         @return_on_false complete cumulators[cn]
     end
-    out = op(Tuple(cumulator for cumulator in cumulators))
+    inps=Tuple(cumulator for cumulator in cumulators)
+    out = op(inps...)
     no_nans = !any(x -> (!isfinite(x)), out)
     return (out, no_nans)
 end
@@ -587,15 +593,16 @@ function degn_eval_generic(
 
     cumulators = []
     for (cn, child) in enumerate(tree.children)
-        (cumulators[cn], complete) = eval_tree_array(child, cX, operators)
+        (cumulator, complete) = eval_tree_array(child, cX, operators)
         !throw_errors && !complete && return nothing, false
+        push!(cumulators, cumulator)
     end
-    out = op(Tuple(cumulator for cumulator in cumulators))
+    inps = Tuple(cumulator for cumulator in cumulators)
     !throw_errors &&
         # !hasmethod(op, Tuple{typeof(left),typeof(right)}) &&
-        !hasmethod(op, typeof(Tuple(cumulator for cumulator in cumulators))) && # This line seems like the most sketch bit of this; I *think* I got it right??
+        !hasmethod(op, typeof(inps)) && # This line seems like the most sketch bit of this; I *think* I got it right??
         return nothing, false
-    return op(Tuple(cumulator for cumulator in cumulators)), true
+    return op(inps...), true
 end
 
 end
