@@ -89,8 +89,17 @@ function tree_mapreduce(
     @memoize_on t function inner(inner, t)
         if t.degree == 0
             return @inline(f_leaf(t))
-        elseif t.degree > 0
-            return @inline(op(@inline(f_branch(t)), inner(inner, t.children)))
+        elseif t.degree == 1
+            return @inline(op(@inline(f_branch(t)), inner(inner, t.children[1])))
+        elseif t.degree == 2
+            return @inline(op(@inline(f_branch(t)), inner(inner, t.children[1]), inner(inner, t.children[2])))
+        # elseif t.degree > 2
+        #     args_v = []
+        #     for cn in 1:length(t.children)
+        #         push!(args_v, inner(inner, t.children[cn]))
+        #     end
+        #     args=Tuple(arg for arg in args)
+        #     return @inline(op(@inline(f_branch(t)), args...)) # idk if this should be 'args' or 'args...' ?
         end
     end
 
@@ -118,12 +127,12 @@ function any(f::F, tree::AbstractNode) where {F<:Function}
         return @inline(f(tree))::Bool || any(f, tree.children[1])
     elseif tree.degree == 2
         return @inline(f(tree))::Bool || any(f, tree.children[1]) || any(f, tree.children[2])
-    else
-        fl = @inline(f(tree))::Bool
-        for child in tree.children
-            fl = fl || any(f, child)
-        end
-        return fl
+    # else
+    #     fl = @inline(f(tree))::Bool
+    #     for child in tree.children
+    #         fl = fl || any(f, child)
+    #     end
+    #     return fl
     end
 end
 
@@ -135,12 +144,12 @@ function Base.:(==)(a::AbstractNode, b::AbstractNode)::Bool
         return isequal_deg1(a, b) && a.children[1] == b.children[1]
     elseif degree == 2
         return isequal_deg2(a, b) && a.children[1] == b.children[1] && a.children[2] == b.children[2]
-    else
-        ans = isequal_degmulti(a, b)
-        for (childa, childb) in zip(a.children, b.children)
-            ans = ans && childa == childb
-        end
-        return ans
+    # else
+    #     ans = isequal_degmulti(a, b)
+    #     for (childa, childb) in zip(a.children, b.children)
+    #         ans = ans && childa == childb
+    #     end
+    #     return ans
     end
 end
 

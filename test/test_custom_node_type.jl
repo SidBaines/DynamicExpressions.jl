@@ -24,7 +24,7 @@ node2 = MyCustomNode(1.5, 3, node1)
 
 @test typeof(node2) == MyCustomNode{Float64,Int}
 @test node2.degree == 1
-@test node2.l.degree == 0
+@test node2.children[1].degree == 0
 @test count_depth(node2) == 2
 @test count_nodes(node2) == 2
 

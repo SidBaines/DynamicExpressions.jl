@@ -80,12 +80,16 @@ function set_constants!(tree::Node{T}, constants::AbstractVector{T}) where {T}
         end
     elseif tree.degree == 1
         set_constants!(tree.children[1], constants)
-    else
-        numberLeft=0
-        for child in enumerate(tree.children)
-            set_constants!(child, @view constants[(numberLeft + 1):end])
-            numberLeft += count_constants(child)
-        end
+    elseif tree.degree == 2
+        numberLeft = count_constants(tree.children[1])
+        set_constants!(tree.children[1], constants)
+        set_constants!(tree.children[2], @view constants[(numberLeft + 1):end])
+    # else
+    #     numberLeft=0
+    #     for child in enumerate(tree.children)
+    #         set_constants!(child, @view constants[(numberLeft + 1):end])
+    #         numberLeft += count_constants(child)
+    #     end
     end
     return nothing
 end
@@ -120,8 +124,14 @@ function index_constants!(tree::Node, index_tree::NodeIndex, left_index)
         index_tree.constant_index = count_constants(tree.children[1])
         index_tree.children = [NodeIndex()]
         index_constants!(tree.children[1], index_tree.children[1], left_index)
+    elseif tree.degree == 2
+        index_tree.children = [NodeIndex(), NodeIndex()]
+        index_constants!(tree.children[1], index_tree.children[1], left_index)
+        index_tree.constant_index = count_constants(tree.children[1])
+        left_index_here = left_index + index_tree.constant_index
+        index_constants!(tree.children[2], index_tree.children[2], left_index_here)
     else
-        index_tree = []
+        index_tree.children = []
         for n in 1:length(tree.children)
             push!(index_tree, NodeIndex())
         end

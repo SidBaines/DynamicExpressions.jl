@@ -252,7 +252,7 @@ function string_op(
         end
         str *= ")"
         # return "$op_name($l, $r)"
-        return op_name * "(" * l * ", " * r * ")"
+        return str
     end
 end
 function string_op(
@@ -275,7 +275,7 @@ function string_op(
     end
     str *= ")"
     # return "$op_name($l, $r)"
-    return op_name * "(" * l * ", " * r * ")"
+    return str
 end
 
 function string_constant(val, bracketed::Bool)
@@ -358,20 +358,20 @@ function string_tree(
             f_constant,
             variable_names,
         )
-    else # if tree.degree > 2
-        return string_op(
-            if operators === nothing
-                "multi_operator[" * string(tree.op) * "]"
-            else
-                operators.multiops[tree.op]
-            end,
-            tree,
-            operators;
-            bracketed,
-            f_variable,
-            f_constant,
-            variable_names,
-        )
+    # else # if tree.degree > 2
+    #     return string_op(
+    #         if operators === nothing
+    #             "multi_operator[" * string(tree.op) * "]"
+    #         else
+    #             operators.multinops[tree.op]
+    #         end,
+    #         tree,
+    #         operators;
+    #         bracketed,
+    #         f_variable,
+    #         f_constant,
+    #         variable_names,
+    #     )
     end
 end
 

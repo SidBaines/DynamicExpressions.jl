@@ -21,16 +21,16 @@ const LATEST_OPERATORS = Ref{Union{Nothing,AbstractOperatorEnum}}(nothing)
 const LATEST_OPERATORS_TYPE = Ref{AvailableOperatorTypes}(IsNothing)
 const LATEST_UNARY_OPERATOR_MAPPING = Dict{Function,fieldtype(Node{Float64}, :op)}()
 const LATEST_BINARY_OPERATOR_MAPPING = Dict{Function,fieldtype(Node{Float64}, :op)}()
-const LATEST_MULTINARY_OPERATOR_MAPPING = Dict{Function,fieldtype(Node{Float64}, :op)}()
+# const LATEST_MULTINARY_OPERATOR_MAPPING = Dict{Function,fieldtype(Node{Float64}, :op)}()
 const ALREADY_DEFINED_UNARY_OPERATORS = (;
     operator_enum=Dict{Function,Bool}(), generic_operator_enum=Dict{Function,Bool}()
 )
 const ALREADY_DEFINED_BINARY_OPERATORS = (;
     operator_enum=Dict{Function,Bool}(), generic_operator_enum=Dict{Function,Bool}()
 )
-const ALREADY_DEFINED_MULTINARY_OPERATORS = (;
-    operator_enum=Dict{Function,Bool}(), generic_operator_enum=Dict{Function,Bool}()
-)
+# const ALREADY_DEFINED_MULTINARY_OPERATORS = (;
+#     operator_enum=Dict{Function,Bool}(), generic_operator_enum=Dict{Function,Bool}()
+# )
 const LATEST_VARIABLE_NAMES = Ref{Vector{String}}(String[])
 
 function Base.show(io::IO, tree::Node)
@@ -101,8 +101,8 @@ function lookup_op(@nospecialize(f), ::Val{degree}) where {degree}
         mapping = LATEST_UNARY_OPERATOR_MAPPING
     elseif degree == 2
         mapping = LATEST_BINARY_OPERATOR_MAPPING
-    elseif degree > 2
-        mapping = LATEST_MULTINARY_OPERATOR_MAPPING
+    # elseif degree > 2
+    #     mapping = LATEST_MULTINARY_OPERATOR_MAPPING
     else
         # Should never happen
     end
@@ -189,66 +189,66 @@ function _extend_binary_operator(f::Symbol, type_requirements, build_converters)
     end
 end
 
-function _extend_multinary_operator(f::Symbol, type_requirements)####, build_converters)
-    quote
-        quote
-            function $($f)(allargs::Union{Node{<:$($type_requirements)}, $($type_requirements)}...)
-                if any(i->!(!(typeof(i)<:Node) || (i.degree == 0 && i.constant)), allargs) #### This evaluates to there if there are ANY non-constant (ie features) in here
-                    latest_op_idx = $($lookup_op)($($f), Val(3))
-                    Ns = []
-                    for arg in allargs
-                        if typeof(arg)<:Node
-                            push!(Ns, arg)
-                        else
-                            push!(Ns, Node(;val=arg))
-                        end
-                    end
-                    Node(latest_op_idx, Ns)
-                else
-                    #### All below are constant so we can evaluate
-                    Vs = []
-                    for arg in allargs
-                        if typeof(arg)<:Node
-                            push!(Vs, arg.val)
-                        else
-                            push!(Vs, val)
-                        end
-                    end
-                    Node(; val=$($f)(Tuple(val for val in Vs)))
-                end
-            end
-            # Lol I'm not doing the converters yet, maybe if I HAVE to to get it 
-            #   to build or if I end up wanting to make this public I will...
-            # if $($build_converters)
-            #     # Converters:
-            #     function $($f)(
-            #         l::Node{T1}, r::Node{T2}
-            #     ) where {T1<:$($type_requirements),T2<:$($type_requirements)}
-            #         T = promote_type(T1, T2)
-            #         l = convert(Node{T}, l)
-            #         r = convert(Node{T}, r)
-            #         return $($f)(l, r)
-            #     end
-            #     function $($f)(
-            #         l::Node{T1}, r::T2
-            #     ) where {T1<:$($type_requirements),T2<:$($type_requirements)}
-            #         T = promote_type(T1, T2)
-            #         l = convert(Node{T}, l)
-            #         r = convert(T, r)
-            #         return $($f)(l, r)
-            #     end
-            #     function $($f)(
-            #         l::T1, r::Node{T2}
-            #     ) where {T1<:$($type_requirements),T2<:$($type_requirements)}
-            #         T = promote_type(T1, T2)
-            #         l = convert(T, l)
-            #         r = convert(Node{T}, r)
-            #         return $($f)(l, r)
-            #     end
-            # end
-        end
-    end
-end
+# function _extend_multinary_operator(f::Symbol, type_requirements)####, build_converters)
+#     quote
+#         quote
+#             function $($f)(allargs::Union{Node{<:$($type_requirements)}, $($type_requirements)}...)
+#                 if any(i->!(!(typeof(i)<:Node) || (i.degree == 0 && i.constant)), allargs) #### This evaluates to there if there are ANY non-constant (ie features) in here
+#                     latest_op_idx = $($lookup_op)($($f), Val(3))
+#                     Ns = []
+#                     for arg in allargs
+#                         if typeof(arg)<:Node
+#                             push!(Ns, arg)
+#                         else
+#                             push!(Ns, Node(;val=arg))
+#                         end
+#                     end
+#                     Node(latest_op_idx, Ns)
+#                 else
+#                     #### All below are constant so we can evaluate
+#                     Vs = []
+#                     for arg in allargs
+#                         if typeof(arg)<:Node
+#                             push!(Vs, arg.val)
+#                         else
+#                             push!(Vs, val)
+#                         end
+#                     end
+#                     Node(; val=$($f)(Tuple(val for val in Vs)))
+#                 end
+#             end
+#             # Lol I'm not doing the converters yet, maybe if I HAVE to to get it 
+#             #   to build or if I end up wanting to make this public I will...
+#             # if $($build_converters)
+#             #     # Converters:
+#             #     function $($f)(
+#             #         l::Node{T1}, r::Node{T2}
+#             #     ) where {T1<:$($type_requirements),T2<:$($type_requirements)}
+#             #         T = promote_type(T1, T2)
+#             #         l = convert(Node{T}, l)
+#             #         r = convert(Node{T}, r)
+#             #         return $($f)(l, r)
+#             #     end
+#             #     function $($f)(
+#             #         l::Node{T1}, r::T2
+#             #     ) where {T1<:$($type_requirements),T2<:$($type_requirements)}
+#             #         T = promote_type(T1, T2)
+#             #         l = convert(Node{T}, l)
+#             #         r = convert(T, r)
+#             #         return $($f)(l, r)
+#             #     end
+#             #     function $($f)(
+#             #         l::T1, r::Node{T2}
+#             #     ) where {T1<:$($type_requirements),T2<:$($type_requirements)}
+#             #         T = promote_type(T1, T2)
+#             #         l = convert(T, l)
+#             #         r = convert(Node{T}, r)
+#             #         return $($f)(l, r)
+#             #     end
+#             # end
+#         end
+#     end
+# end
 
 function _extend_operators(operators, skip_user_operators, kws, __module__::Module)
     empty_old_operators =
@@ -262,53 +262,53 @@ function _extend_operators(operators, skip_user_operators, kws, __module__::Modu
         else
             true
         end
-    muliinary_ex = _extend_mulinary_operator(:f, :type_requirements, :build_converters)
+    # muliinary_ex = _extend_multinary_operator(:f, :type_requirements)#, :build_converters)
     binary_ex = _extend_binary_operator(:f, :type_requirements, :build_converters)
     unary_ex = _extend_unary_operator(:f, :type_requirements)
     return quote
         local type_requirements
         local build_converters
-        local multinary_exists
+        # local multinary_exists
         local binary_exists
         local unary_exists
         if isa($operators, $OperatorEnum)
             type_requirements = Number
             build_converters = true
-            multinary_exists = $(ALREADY_DEFINED_MULTINARY_OPERATORS).operator_enum
+            # multinary_exists = $(ALREADY_DEFINED_MULTINARY_OPERATORS).operator_enum
             binary_exists = $(ALREADY_DEFINED_BINARY_OPERATORS).operator_enum
             unary_exists = $(ALREADY_DEFINED_UNARY_OPERATORS).operator_enum
         else
             type_requirements = Any
             build_converters = false
-            multinary_exists = $(ALREADY_DEFINED_MULTINARY_OPERATORS).generic_operator_enum
+            # multinary_exists = $(ALREADY_DEFINED_MULTINARY_OPERATORS).generic_operator_enum
             binary_exists = $(ALREADY_DEFINED_BINARY_OPERATORS).generic_operator_enum
             unary_exists = $(ALREADY_DEFINED_UNARY_OPERATORS).generic_operator_enum
         end
         if $(empty_old_operators)
             # Trigger errors if operators are not yet defined:
-            empty!($(LATEST_MULTINARY_OPERATOR_MAPPING))
+            # empty!($(LATEST_MULTINARY_OPERATOR_MAPPING))
             empty!($(LATEST_BINARY_OPERATOR_MAPPING))
             empty!($(LATEST_UNARY_OPERATOR_MAPPING))
         end
-        for (op, func) in enumerate($(operators).multinops)
-            local f = Symbol(func)
-            local skip = false
-            if isdefined(Base, f)
-                f = :(Base.$(f))
-            elseif $(skip_user_operators)
-                skip = true
-            else
-                f = :($($__module__).$(f))
-            end
-            $(LATEST_MULTINARY_OPERATOR_MAPPING)[func] = op
-            skip && continue
-            # Avoid redefining methods:
-            if (!haskey(unary_exists, func)) && (!haskey(binary_exists, func))
-                eval($muliinary_ex)
-                unary_exists[func] = true
-                binary_exists[func] = true
-            end
-        end
+        # for (op, func) in enumerate($(operators).multinops)
+        #     local f = Symbol(func)
+        #     local skip = false
+        #     if isdefined(Base, f)
+        #         f = :(Base.$(f))
+        #     elseif $(skip_user_operators)
+        #         skip = true
+        #     else
+        #         f = :($($__module__).$(f))
+        #     end
+        #     $(LATEST_MULTINARY_OPERATOR_MAPPING)[func] = op
+        #     skip && continue
+        #     # Avoid redefining methods:
+        #     if (!haskey(unary_exists, func)) && (!haskey(binary_exists, func))
+        #         eval($muliinary_ex)
+        #         unary_exists[func] = true
+        #         binary_exists[func] = true
+        #     end
+        # end
         for (op, func) in enumerate($(operators).binops)
             local f = Symbol(func)
             local skip = false
@@ -322,10 +322,10 @@ function _extend_operators(operators, skip_user_operators, kws, __module__::Modu
             $(LATEST_BINARY_OPERATOR_MAPPING)[func] = op
             skip && continue
             # Avoid redefining methods:
-            if (!haskey(unary_exists, func)) && (!haskey(multinary_exists, func))
+            if (!haskey(unary_exists, func))# && (!haskey(multinary_exists, func))
                 eval($binary_ex)
                 unary_exists[func] = true
-                multinary_exists[func] = true
+                # multinary_exists[func] = true
             end
         end
         for (op, func) in enumerate($(operators).unaops)
@@ -341,10 +341,10 @@ function _extend_operators(operators, skip_user_operators, kws, __module__::Modu
             $(LATEST_UNARY_OPERATOR_MAPPING)[func] = op
             skip && continue
             # Avoid redefining methods:
-            if (!haskey(binary_exists, func)) && (!haskey(multinary_exists, func))
+            if (!haskey(binary_exists, func))# && (!haskey(multinary_exists, func))
                 eval($unary_ex)
                 binary_exists[func] = true
-                multinary_exists[func] = true
+                # multinary_exists[func] = true
             end
         end
     end
@@ -413,27 +413,27 @@ It will automatically compute derivatives with `Zygote.jl`.
 - `empty_old_operators::Bool=true`: Whether to clear the old operators.
 """
 function OperatorEnum(;
-    multinary_operators=[],
+    # multinary_operators=[],
     binary_operators=[],
     unary_operators=[],
     enable_autodiff::Bool=false,
     define_helper_functions::Bool=true,
     empty_old_operators::Bool=true,
 )
-    @assert length(binary_operators) > 0 || length(unary_operators) > 0 || length(multinary_operators) > 0
+    @assert length(binary_operators) > 0 || length(unary_operators) > 0#|| length(multinary_operators) > 0
 
-    multinary_operators = Function[op for op in multinary_operators]
+    # multinary_operators = Function[op for op in multinary_operators]
     binary_operators = Function[op for op in binary_operators]
     unary_operators = Function[op for op in unary_operators]
 
-    diff_multinary_operators = Function[]
+    # diff_multinary_operators = Function[]
     diff_binary_operators = Function[]
     diff_unary_operators = Function[]
 
     if enable_autodiff
-        for op in multinary_operators
-            push!(diff_multinary_operators, _zygote_gradient(op, Val(3)))
-        end
+        # for op in multinary_operators
+        #     push!(diff_multinary_operators, _zygote_gradient(op, Val(3)))
+        # end
         for op in binary_operators
             push!(diff_binary_operators, _zygote_gradient(op, Val(2)))
         end
@@ -443,7 +443,8 @@ function OperatorEnum(;
     end
 
     operators = OperatorEnum(
-        multinary_operators, binary_operators, unary_operators, diff_multinary_operators, diff_binary_operators, diff_unary_operators
+        # multinary_operators, binary_operators, unary_operators, diff_multinary_operators, diff_binary_operators, diff_unary_operators
+        binary_operators, unary_operators, diff_binary_operators, diff_unary_operators
     )
 
     if define_helper_functions
@@ -474,19 +475,20 @@ and `(::Node)(X)`.
 - `empty_old_operators::Bool=true`: Whether to clear the old operators.
 """
 function GenericOperatorEnum(;
-    multinary_operators=[],
+    # multinary_operators=[],
     binary_operators=[],
     unary_operators=[],
     define_helper_functions::Bool=true,
     empty_old_operators::Bool=true,
 )
-    @assert length(binary_operators) > 0 || length(unary_operators) > 0 || length(multinary_operators) > 0
+    @assert length(binary_operators) > 0 || length(unary_operators) > 0# || length(multinary_operators) > 0
 
-    multinary_operators = Function[op for op in multinary_operators]
+    # multinary_operators = Function[op for op in multinary_operators]
     binary_operators = Function[op for op in binary_operators]
     unary_operators = Function[op for op in unary_operators]
 
-    operators = GenericOperatorEnum(multinary_operators, binary_operators, unary_operators)
+    # operators = GenericOperatorEnum(multinary_operators, binary_operators, unary_operators)
+    operators = GenericOperatorEnum(binary_operators, unary_operators)
 
     if define_helper_functions
         @extend_operators_base operators empty_old_operators = empty_old_operators

@@ -160,10 +160,10 @@ function check_tree(tree::Node, node_index::NodeIndex, constant_list::AbstractVe
     if tree.degree == 0
         (!tree.constant) || tree.val == constant_list[node_index.constant_index]
     elseif tree.degree == 1
-        check_tree(tree.l, node_index.l, constant_list)
+        check_tree(tree.children[1], node_index.children[1], constant_list)
     else
-        check_tree(tree.l, node_index.l, constant_list) &&
-            check_tree(tree.r, node_index.r, constant_list)
+        check_tree(tree.children[1], node_index.children[1], constant_list) &&
+            check_tree(tree.children[2], node_index.children[2], constant_list)
     end
 end
 
