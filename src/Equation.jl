@@ -48,11 +48,8 @@ nodes, you can evaluate or print a given expression.
     operator in `operators.binops`. In other words, this is an enum
     of the operators, and is dependent on the specific `OperatorEnum`
     object. Only defined if `degree >= 1`
-- `l::Node{T}`: Left child of the node. Only defined if `degree >= 1`.
+- `children::Vector{Node{T}}`: Children the node. Only defined if `degree >= 1`.
     Same type as the parent node.
-- `r::Node{T}`: Right child of the node. Only defined if `degree == 2`.
-    Same type as the parent node. This is to be passed as the right
-    argument to the binary operator.
 """
 mutable struct Node{T} <: AbstractNode
     degree::UInt8  # 0 for constant/variable, 1 for cos/sin, 2 for +/* etc.
@@ -61,8 +58,7 @@ mutable struct Node{T} <: AbstractNode
     # ------------------- (possibly undefined below)
     feature::UInt16  # If is a variable (e.g., x in cos(x)), this stores the feature index.
     op::UInt8  # If operator, this is the index of the operator in operators.binops, or operators.unaops
-    l::Node{T}  # Left child node. Only defined for degree=1 or degree=2.
-    r::Node{T}  # Right child node. Only defined for degree=2. 
+    children::Vector{Node{T}} # Child nodes. Only defined for degree>=1. # Should I make this a tuple?? Possibly safer/better??
 
     #################
     ## Constructors:
@@ -70,8 +66,9 @@ mutable struct Node{T} <: AbstractNode
     Node(d::Integer, c::Bool, v::_T) where {_T} = new{_T}(UInt8(d), c, v)
     Node(::Type{_T}, d::Integer, c::Bool, v::_T) where {_T} = new{_T}(UInt8(d), c, v)
     Node(::Type{_T}, d::Integer, c::Bool, v::Nothing, f::Integer) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f))
-    Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, l::Node{_T}) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), l)
-    Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, l::Node{_T}, r::Node{_T}) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), l, r)
+    Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, l::Node{_T}) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), [l])
+    Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, l::Node{_T}, r::Node{_T}) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), [l, r])
+    Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, cs::Vector{Node{_T}}) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), cs)
 
 end
 ################################################################################
@@ -80,7 +77,7 @@ end
 include("base.jl")
 
 """
-    Node([::Type{T}]; val=nothing, feature::Union{Integer,Nothing}=nothing) where {T}
+Node([::Type{T}]; val=nothing, feature::Union{Integer,Nothing}=nothing) where {T}
 
 Create a leaf node: either a constant, or a variable.
 
@@ -136,7 +133,7 @@ end
 
 Apply unary operator `op` (enumerating over the order given) to `Node` `l`
 """
-Node(op::Integer, l::Node{T}) where {T} = Node(1, false, nothing, 0, op, l)
+Node(op::Integer, l::Node{T}) where {T} = Node(1, false, nothing, 0, op, [l])
 
 """
     Node(op::Integer, l::Node, r::Node)
@@ -151,7 +148,18 @@ function Node(op::Integer, l::Node{T1}, r::Node{T2}) where {T1,T2}
         l = convert(Node{T}, l)
         r = convert(Node{T}, r)
     end
-    return Node(2, false, nothing, 0, op, l, r)
+    return Node(2, false, nothing, 0, op, [l, r])
+end
+
+"""
+    Node(op::Integer, children::Vector{Node})
+
+Apply multi arity operator `op` (enumerating over the order given) to `Node`s in the Vector `children`
+Assumes all have the same type T.
+"""
+function Node(op::Integer, children::Vector{Node{T}}) where {T}
+    #print("Hey look I'm creating a node!\n")
+    return Node(length(children), false, nothing, 0, op, children)
 end
 
 """
@@ -191,10 +199,7 @@ function set_node!(tree::Node{T}, new_tree::Node{T}) where {T}
         end
     else
         tree.op = new_tree.op
-        tree.l = new_tree.l
-        if new_tree.degree == 2
-            tree.r = new_tree.r
-        end
+        tree.children = new_tree.children
     end
     return nothing
 end
@@ -230,16 +235,22 @@ function string_op(
 )::String where {F}
     op_name = get_op_name(op)
     if op_name in ["+", "-", "*", "/", "^", "×"]
-        l = string_tree(tree.l, args...; bracketed=false, kws...)
-        r = string_tree(tree.r, args...; bracketed=false, kws...)
+        l = string_tree(tree.children[1], args...; bracketed=false, kws...)
+        r = string_tree(tree.children[2], args...; bracketed=false, kws...)
         if bracketed
             return l * " " * op_name * " " * r
         else
             return "(" * l * " " * op_name * " " * r * ")"
         end
     else
-        l = string_tree(tree.l, args...; bracketed=true, kws...)
-        r = string_tree(tree.r, args...; bracketed=true, kws...)
+        str = op_name * "("
+        for (cn, child) in enumerate(tree.children)
+            str *= string_tree(child, args...; bracketed=true, kws...)
+            if cn != length(tree.children)
+                str *= ", "
+            end
+        end
+        str *= ")"
         # return "$op_name($l, $r)"
         return op_name * "(" * l * ", " * r * ")"
     end
@@ -248,8 +259,23 @@ function string_op(
     ::Val{1}, op::F, tree::Node, args...; bracketed, kws...
 )::String where {F}
     op_name = get_op_name(op)
-    l = string_tree(tree.l, args...; bracketed=true, kws...)
+    l = string_tree(tree.children[1], args...; bracketed=true, kws...)
     return op_name * "(" * l * ")"
+end
+function string_op(
+    op::F, tree::Node, args...; bracketed, kws...
+)::String where {F}
+    op_name = get_op_name(op)
+    str = op_name * "("
+    for (cn, child) in enumerate(tree.children)
+        str *= string_tree(child, args...; bracketed=true, kws...)
+        if cn != length(tree.children)
+            str *= ", "
+        end
+    end
+    str *= ")"
+    # return "$op_name($l, $r)"
+    return op_name * "(" * l * ", " * r * ")"
 end
 
 function string_constant(val, bracketed::Bool)
@@ -317,13 +343,27 @@ function string_tree(
             f_constant,
             variable_names,
         )
-    else
+    elseif tree.degree == 2
         return string_op(
             Val(2),
             if operators === nothing
                 "binary_operator[" * string(tree.op) * "]"
             else
                 operators.binops[tree.op]
+            end,
+            tree,
+            operators;
+            bracketed,
+            f_variable,
+            f_constant,
+            variable_names,
+        )
+    else # if tree.degree > 2
+        return string_op(
+            if operators === nothing
+                "multi_operator[" * string(tree.op) * "]"
+            else
+                operators.multiops[tree.op]
             end,
             tree,
             operators;

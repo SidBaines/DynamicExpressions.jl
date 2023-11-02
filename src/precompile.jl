@@ -18,6 +18,7 @@ end
     test_all_combinations(; binary_operators, unary_operators, turbo, types)
 
 Test all combinations of the given operators and types. Useful for precompilation.
+# ToDo (Sid) Add the multinary operators in here
 """
 function test_all_combinations(; binary_operators, unary_operators, turbo, types)
     for binops in binary_operators,

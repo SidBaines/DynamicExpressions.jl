@@ -89,10 +89,8 @@ function tree_mapreduce(
     @memoize_on t function inner(inner, t)
         if t.degree == 0
             return @inline(f_leaf(t))
-        elseif t.degree == 1
-            return @inline(op(@inline(f_branch(t)), inner(inner, t.l)))
-        else
-            return @inline(op(@inline(f_branch(t)), inner(inner, t.l), inner(inner, t.r)))
+        elseif t.degree > 0
+            return @inline(op(@inline(f_branch(t)), inner(inner, t.children)))
         end
     end
 
@@ -117,9 +115,15 @@ function any(f::F, tree::AbstractNode) where {F<:Function}
     if tree.degree == 0
         return @inline(f(tree))::Bool
     elseif tree.degree == 1
-        return @inline(f(tree))::Bool || any(f, tree.l)
+        return @inline(f(tree))::Bool || any(f, tree.children[1])
+    elseif tree.degree == 2
+        return @inline(f(tree))::Bool || any(f, tree.children[1]) || any(f, tree.children[2])
     else
-        return @inline(f(tree))::Bool || any(f, tree.l) || any(f, tree.r)
+        fl = @inline(f(tree))::Bool
+        for child in tree.children
+            fl = fl || any(f, child)
+        end
+        return fl
     end
 end
 
@@ -128,14 +132,21 @@ function Base.:(==)(a::AbstractNode, b::AbstractNode)::Bool
     if degree == 0
         return isequal_deg0(a, b)
     elseif degree == 1
-        return isequal_deg1(a, b) && a.l == b.l
+        return isequal_deg1(a, b) && a.children[1] == b.children[1]
+    elseif degree == 2
+        return isequal_deg2(a, b) && a.children[1] == b.children[1] && a.children[2] == b.children[2]
     else
-        return isequal_deg2(a, b) && a.l == b.l && a.r == b.r
+        ans = isequal_degmulti(a, b)
+        for (childa, childb) in zip(a.children, b.children)
+            ans = ans && childa == childb
+        end
+        return ans
     end
 end
 
 @inline isequal_deg1(a::Node, b::Node) = a.op == b.op
 @inline isequal_deg2(a::Node, b::Node) = a.op == b.op
+@inline isequal_degmulti(a::Node, b::Node) = a.op == b.op
 @inline function isequal_deg0(a::Node{T1}, b::Node{T2}) where {T1,T2}
     (constant = a.constant) != b.constant && return false
     if constant

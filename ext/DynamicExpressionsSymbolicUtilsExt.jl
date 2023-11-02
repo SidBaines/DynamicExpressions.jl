@@ -27,9 +27,16 @@ function parse_tree_to_eqs(
         return SymbolicUtils.Sym{LiteralReal}(Symbol("x$(tree.feature)"))
     end
     # Collect the next children
-    children = tree.degree == 2 ? (tree.l, tree.r) : (tree.l,)
+    # children = tree.degree == 2 ? (tree.children[1], tree.children[2]) : (tree.children[1],)
+    children = Tuple(child for child in tree.children)
     # Get the operation
-    op = tree.degree == 2 ? operators.binops[tree.op] : operators.unaops[tree.op]
+    if tree.degree > 2
+        op = operators.multinops[tree.op]
+    elseif tree.degree == 2
+        op = operators.binops[tree.op]
+    elseif tree.degree == 1
+        operators.unaops[tree.op]
+    end
     # Create an N tuple of Numbers for each argument
     dtypes = map(x -> Number, 1:(tree.degree))
     #
@@ -55,7 +62,9 @@ function convert_to_function(
         ind = findoperation(x.name, operators.binops)
         return operators.binops[ind]
     else
-        throw(AssertionError("Function $(String(x.name)) has degree > 2 !"))
+        ind = findoperation(x.name, operators.multinops)
+        return operators.multinops[ind]
+        # throw(AssertionError("Function $(String(x.name)) has degree > 2 !"))
     end
 end
 
@@ -135,10 +144,12 @@ function Base.convert(
     args = SymbolicUtils.arguments(expr)
 
     length(args) > 2 && return split_eq(op, args, operators; variable_names=variable_names)
-    ind = if length(args) == 2
-        findoperation(op, operators.binops)
-    else
-        findoperation(op, operators.unaops)
+    if length(args) > 2
+        ind = findoperation(op, operators.multinops)
+    elseif length(args) == 2
+        ind = findoperation(op, operators.binops)
+    elseif length(args) == 1
+        ind = findoperation(op, operators.unaops)
     end
 
     return Node(
@@ -261,11 +272,13 @@ function multiply_powers(
             @return_on_false out[i][2] eqn
             @return_on_false isgood(out[i][1]) eqn
         end
-        cumulator = out[1][1]
-        for i in 2:size(out, 1)
-            cumulator = op(cumulator, out[i][1])
-            @return_on_false isgood(cumulator) eqn
-        end
+        cumulator = op(Tuple(out[i][1] for i in 1:size(out,1)))
+        @return_on_false isgood(cumulator) eqn
+        # cumulator = out[1][1]
+        # for i in 2:size(out, 1)
+        #     cumulator = op(cumulator, out[i][1])
+        #     @return_on_false isgood(cumulator) eqn
+        # end
         return cumulator, true
     end
 end

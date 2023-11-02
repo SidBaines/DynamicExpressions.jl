@@ -79,11 +79,13 @@ function set_constants!(tree::Node{T}, constants::AbstractVector{T}) where {T}
             tree.val = constants[1]
         end
     elseif tree.degree == 1
-        set_constants!(tree.l, constants)
+        set_constants!(tree.children[1], constants)
     else
-        numberLeft = count_constants(tree.l)
-        set_constants!(tree.l, constants)
-        set_constants!(tree.r, @view constants[(numberLeft + 1):end])
+        numberLeft=0
+        for child in enumerate(tree.children)
+            set_constants!(child, @view constants[(numberLeft + 1):end])
+            numberLeft += count_constants(child)
+        end
     end
     return nothing
 end
@@ -93,8 +95,7 @@ end
 # than adding a new attribute to Node.
 mutable struct NodeIndex
     constant_index::UInt16  # Index of this constant (if a constant exists here)
-    l::NodeIndex
-    r::NodeIndex
+    children::Vector{NodeIndex}
 
     NodeIndex() = new()
 end
@@ -116,16 +117,24 @@ function index_constants!(tree::Node, index_tree::NodeIndex, left_index)
             index_tree.constant_index = left_index + 1
         end
     elseif tree.degree == 1
-        index_tree.constant_index = count_constants(tree.l)
-        index_tree.l = NodeIndex()
-        index_constants!(tree.l, index_tree.l, left_index)
+        index_tree.constant_index = count_constants(tree.children[1])
+        index_tree.children = [NodeIndex()]
+        index_constants!(tree.children[1], index_tree.children[1], left_index)
     else
-        index_tree.l = NodeIndex()
-        index_tree.r = NodeIndex()
-        index_constants!(tree.l, index_tree.l, left_index)
-        index_tree.constant_index = count_constants(tree.l)
-        left_index_here = left_index + index_tree.constant_index
-        index_constants!(tree.r, index_tree.r, left_index_here)
+        index_tree = []
+        for n in 1:length(tree.children)
+            push!(index_tree, NodeIndex())
+        end
+        for n in 1:length(tree.children)
+            if n == 1
+                left_index_here = left_index
+                index_constants!(tree.children[n], index_tree.children[n], left_index_here)
+                index_tree.constant_index = count_constants(tree.children[n])
+            else
+                left_index_here += count_constants(tree.children[n-1])
+                index_constants!(tree.children[n], index_tree.children[n], left_index_here)
+            end
+        end
     end
     return nothing
 end

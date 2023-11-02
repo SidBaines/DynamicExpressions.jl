@@ -16,4 +16,12 @@ function _zygote_gradient(op::F, ::Val{2}) where {F}
     end
 end
 
+# This is sketchy, but I'm not sure it's used. ToDo (Sid) Should check this if it's going to be made public
+function _zygote_gradient(op::F, ::Val{3}) where {F}
+    function args...
+        dargs = gradient(op, args)
+        return (dargs[n] === nothing ? zero(args[n]) : dargs[n] for n in 1:length(args))
+    end
+end
+
 end
