@@ -6,7 +6,7 @@ import ..UtilsModule: isbad, isgood
 
 _una_op_kernel(f::F, l::T) where {F,T} = f(l)
 _bin_op_kernel(f::F, l::T, r::T) where {F,T} = f(l, r)
-# _multin_op_kernel(f::F, cdrn::Tuple) where {F} = f(cdrn)
+_multin_op_kernel(f::F, cdrn::Tuple) where {F} = f(cdrn)
 
 # Simplify tree
 function combine_operators(tree::Node{T}, operators::AbstractOperatorEnum) where {T}
@@ -143,28 +143,28 @@ function simplify_tree(tree::Node{T}, operators::AbstractOperatorEnum) where {T}
             end
             return Node(T; val=convert(T, out))
         end
-    # elseif tree.degree > 2
-    #     for cn in 1:length(tree.children)
-    #         tree.children[cn] = simplify_tree(tree.children[cn], operators)
-    #     end
-    #     constantsBelow = all(i->(i.degree == 0 && i.constant), tree.children)
-    #     if constantsBelow
-    #         # NaN checks
-    #         vs = Vector{T}
-    #         for cn in 1:legnth(tree.children)
-    #             push!(vs,tree.children[cn].val::T)
-    #         end
-    #         if any(v->isbad(v), vs)
-    #             return tree
-    #         end
+    elseif tree.degree > 2
+        for cn in 1:length(tree.children)
+            tree.children[cn] = simplify_tree(tree.children[cn], operators)
+        end
+        constantsBelow = all(i->(i.degree == 0 && i.constant), tree.children)
+        if constantsBelow
+            # NaN checks
+            vs = Vector{T}
+            for cn in 1:legnth(tree.children)
+                push!(vs,tree.children[cn].val::T)
+            end
+            if any(v->isbad(v), vs)
+                return tree
+            end
 
-    #         # Actually compute:
-    #         out = _multin_op_kernel(operators.multinops[tree.op], Tuple(v for v in vs))
-    #         if isbad(out)
-    #             return tree
-    #         end
-    #         return Node(T; val=convert(T, out))
-    #     end
+            # Actually compute:
+            out = _multin_op_kernel(operators.multinops[tree.op], Tuple(v for v in vs))
+            if isbad(out)
+                return tree
+            end
+            return Node(T; val=convert(T, out))
+        end
     end
     return tree
 end

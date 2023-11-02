@@ -84,12 +84,12 @@ function set_constants!(tree::Node{T}, constants::AbstractVector{T}) where {T}
         numberLeft = count_constants(tree.children[1])
         set_constants!(tree.children[1], constants)
         set_constants!(tree.children[2], @view constants[(numberLeft + 1):end])
-    # else
-    #     numberLeft=0
-    #     for child in enumerate(tree.children)
-    #         set_constants!(child, @view constants[(numberLeft + 1):end])
-    #         numberLeft += count_constants(child)
-    #     end
+    else
+        numberLeft=0
+        for child in enumerate(tree.children)
+            set_constants!(child, @view constants[(numberLeft + 1):end])
+            numberLeft += count_constants(child)
+        end
     end
     return nothing
 end

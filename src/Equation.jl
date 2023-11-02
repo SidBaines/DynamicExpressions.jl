@@ -358,20 +358,20 @@ function string_tree(
             f_constant,
             variable_names,
         )
-    # else # if tree.degree > 2
-    #     return string_op(
-    #         if operators === nothing
-    #             "multi_operator[" * string(tree.op) * "]"
-    #         else
-    #             operators.multinops[tree.op]
-    #         end,
-    #         tree,
-    #         operators;
-    #         bracketed,
-    #         f_variable,
-    #         f_constant,
-    #         variable_names,
-    #     )
+    else # if tree.degree > 2
+        return string_op(
+            if operators === nothing
+                "multi_operator[" * string(tree.op) * "]"
+            else
+                operators.multinops[tree.op]
+            end,
+            tree,
+            operators;
+            bracketed,
+            f_variable,
+            f_constant,
+            variable_names,
+        )
     end
 end
 

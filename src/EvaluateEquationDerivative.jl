@@ -10,7 +10,7 @@ import ..EvaluateEquationModule: deg0_eval
 _zygote_gradient(args...) = error("Please load the Zygote.jl package.")
 
 function assert_autodiff_enabled(operators::OperatorEnum)
-    if length(operators.diff_binops) == 0 && length(operators.diff_unaops) == 0
+    if length(operators.diff_binops) == 0 && length(operators.diff_unaops) == 0 && length(operators.diff_multinops) == 0
         error(
             "Found no differential operators. Did you forget to set `enable_autodiff=true` when creating the `OperatorEnum`?",
         )
@@ -96,16 +96,16 @@ function _eval_diff_tree_array(
             direction,
             Val(turbo),
         )
-    # else#if degree > 2
-    #     diff_degn_eval(
-    #         tree,
-    #         cX,
-    #         operators.multinops[tree.op],
-    #         operators.diff_multinops[tree.op],
-    #         operators,
-    #         direction,
-    #         Val(turbo),
-    #     )
+    else#if degree > 2
+        diff_degn_eval(
+            tree,
+            cX,
+            operators.multinops[tree.op],
+            operators.diff_multinops[tree.op],
+            operators,
+            direction,
+            Val(turbo),
+        )
     end
     @return_on_false2 complete evaluation derivative
     return evaluation, derivative, !(is_bad_array(evaluation) || is_bad_array(derivative))
@@ -178,44 +178,46 @@ function diff_deg2_eval(
     return (cumulator, dcumulator, true)
 end
 
-# function diff_degn_eval(
-#     tree::Node{T},
-#     cX::AbstractMatrix{T},
-#     op::F,
-#     diff_op::dF,
-#     operators::OperatorEnum,
-#     direction::Integer,
-#     ::Val{turbo},
-# )::Tuple{AbstractVector{T},AbstractVector{T},Bool} where {T<:Number,F,dF,turbo}
-#     cumulators = []
-#     dcumulators = []
-#     for (cn, child) in enumerate(tree.children)
-#         (cumulator, dcumulator, complete) = _eval_diff_tree_array(
-#             child, cX, operators, direction, Val(turbo)
-#         )
-#         @return_on_false2 complete cumulator dcumulator
-#         push!(cumulators, cumulator)
-#         push!(dcumulators, dcumulator)
-#     end
+function diff_degn_eval(
+    tree::Node{T},
+    cX::AbstractMatrix{T},
+    op::F,
+    diff_op::dF,
+    operators::OperatorEnum,
+    direction::Integer,
+    ::Val{turbo},
+)::Tuple{AbstractVector{T},AbstractVector{T},Bool} where {T<:Number,F,dF,turbo}
+    cumulators = []
+    dcumulators = []
+    for (cn, child) in enumerate(tree.children)
+        (cumulator, dcumulator, complete) = _eval_diff_tree_array(
+            child, cX, operators, direction, Val(turbo)
+        )
+        @return_on_false2 complete cumulator dcumulator
+        push!(cumulators, cumulator)
+        push!(dcumulators, dcumulator)
+    end
 
-#     # @maybe_turbo turbo for j in indices((cumulator, dcumulator, array2, dcumulator2))
-#     cumulator_l = similar(cumulators[1])
-#     dcumulator_l = similar(cumulators[1])
-#     @maybe_turbo turbo for j in indices((cumulators[1]))
-#         inps = Tuple(cumulator[j] for cumulator in cumulators)
-#         x = op(inps...)::T
+    # @maybe_turbo turbo for j in indices((cumulator, dcumulator, array2, dcumulator2))
+    cumulator_l = similar(cumulators[1])
+    dcumulator_l = similar(cumulators[1])
+    # @maybe_turbo turbo for j in indices((cumulators[1]))
+    # Again, for some reason this fails when we use maybe_turbo
+    for j in indices((cumulators[1]))
+        inps = Tuple(cumulator[j] for cumulator in cumulators)
+        x = op(inps...)::T
 
-#         derivs = diff_op(inps...)::Tuple
-#         dx = 0 
-#         for dn in indices(dcumulators)
-#             dx += derivs[dn] * dcumulators[dn]
-#         end
+        derivs = diff_op(inps...)::Tuple
+        dx = 0 
+        for dn in indices(dcumulators)
+            dx += derivs[dn] * dcumulators[dn]
+        end
 
-#         cumulator_l[j] = x
-#         dcumulator_l[j] = dx
-#     end
-#     return (cumulator_l, dcumulator_l, true)
-# end
+        cumulator_l[j] = x
+        dcumulator_l[j] = dx
+    end
+    return (cumulator_l, dcumulator_l, true)
+end
 
 """
     eval_grad_tree_array(tree::Node{T}, cX::AbstractMatrix{T}, operators::OperatorEnum; variable::Bool=false, turbo::Bool=false)
@@ -333,18 +335,18 @@ function _eval_grad_tree_array(
             Val(variable),
             Val(turbo),
         )
-    # else#if tree.degree > 2
-    #     grad_degn_eval(
-    #         tree,
-    #         Val(n_gradients),
-    #         index_tree,
-    #         cX,
-    #         operators.multinops[tree.op],
-    #         operators.diff_multinops[tree.op],
-    #         operators,
-    #         Val(variable),
-    #         Val(turbo),
-    #     )
+    else#if tree.degree > 2
+        grad_degn_eval(
+            tree,
+            Val(n_gradients),
+            index_tree,
+            cX,
+            operators.multinops[tree.op],
+            operators.diff_multinops[tree.op],
+            operators,
+            Val(variable),
+            Val(turbo),
+        )
     end
 end
 
@@ -444,48 +446,49 @@ end
 @inline tuplejoin(x) = x
 @inline tuplejoin(x, y) = (x..., y...)
 
-# function grad_degn_eval(
-#     tree::Node{T},
-#     ::Val{n_gradients},
-#     index_tree::NodeIndex,
-#     cX::AbstractMatrix{T},
-#     op::F,
-#     diff_op::dF,
-#     operators::OperatorEnum,
-#     ::Val{variable},
-#     ::Val{turbo},
-# )::Tuple{
-#     AbstractVector{T},AbstractMatrix{T},Bool
-# } where {T<:Number,F,dF,variable,turbo,n_gradients}
-#     cumulators = []
-#     dcumulators = []
-#     for cn in indices(tree.children)
-#         (cumulator, dcumulator, complete) = eval_grad_tree_array(
-#             tree.children[cn], Val(n_gradients), index_tree.children[cn], cX, operators, Val(variable), Val(turbo)
-#         )
-#         @return_on_false2 complete cumulator dcumulator
-#         push!(cumulators, cumulator)
-#         push!(dcumulators, dcumulator)
-#     end
+function grad_degn_eval(
+    tree::Node{T},
+    ::Val{n_gradients},
+    index_tree::NodeIndex,
+    cX::AbstractMatrix{T},
+    op::F,
+    diff_op::dF,
+    operators::OperatorEnum,
+    ::Val{variable},
+    ::Val{turbo},
+)::Tuple{
+    AbstractVector{T},AbstractMatrix{T},Bool
+} where {T<:Number,F,dF,variable,turbo,n_gradients}
+    cumulators = []
+    dcumulators = []
+    for cn in indices(tree.children)
+        (cumulator, dcumulator, complete) = eval_grad_tree_array(
+            tree.children[cn], Val(n_gradients), index_tree.children[cn], cX, operators, Val(variable), Val(turbo)
+        )
+        @return_on_false2 complete cumulator dcumulator
+        push!(cumulators, cumulator)
+        push!(dcumulators, dcumulator)
+    end
 
-#     cumulator1=similar(cumulators[1])
-#     dcumulator1=similar(dcumulators[1])
-#     @maybe_turbo turbo for j in indices(
-#         tuplejoin(Tuple(cumulator for cumulator in cumulators), Tuple(dcumulator for dcumulator in dcumulators)), tuplejoin(Tuple(1 for i in 1:length(cumulators)), Tuple(2 for i in 1:length(dcumulators)))
-#     )
-#         inps=Tuple(cumulator[j] for cumulator in cumulators)
-#         x = op(inps...)::T
-#         dxs = diff_op(inps...)::Tuple{T,T}
-#         cumulator1[j] = x
-#         for k in indices(Tuple(dcumulator for dcumulator in dcumulators), Tuple(1 for i in 1:length(dcumulators)))
-#             dcumulator1[k, j] = 0
-#             for dn in indices(dcumulators)
-#                 dcumulator1[k, j] += dxs[dn] * dcumulators[dn][k, j]
-#             end
-#         end
-#     end
+    cumulator1=similar(cumulators[1])
+    dcumulator1=similar(dcumulators[1])
+    # @maybe_turbo turbo for j in indices(
+    for j in indices(
+        tuplejoin(Tuple(cumulator for cumulator in cumulators), Tuple(dcumulator for dcumulator in dcumulators)), tuplejoin(Tuple(1 for i in 1:length(cumulators)), Tuple(2 for i in 1:length(dcumulators)))
+    )
+        inps=Tuple(cumulator[j] for cumulator in cumulators)
+        x = op(inps...)::T
+        dxs = diff_op(inps...)::Tuple{T,T}
+        cumulator1[j] = x
+        for k in indices(Tuple(dcumulator for dcumulator in dcumulators), Tuple(1 for i in 1:length(dcumulators)))
+            dcumulator1[k, j] = 0
+            for dn in indices(dcumulators)
+                dcumulator1[k, j] += dxs[dn] * dcumulators[dn][k, j]
+            end
+        end
+    end
 
-#     return (cumulator1, dcumulator1, true)
-# end
+    return (cumulator1, dcumulator1, true)
+end
 
 end
