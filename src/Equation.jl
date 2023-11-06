@@ -363,7 +363,7 @@ function string_tree(
             if operators === nothing
                 "multi_operator[" * string(tree.op) * "]"
             else
-                operators.multinops[tree.op]
+                operators.multinops[tree.op][1]
             end,
             tree,
             operators;

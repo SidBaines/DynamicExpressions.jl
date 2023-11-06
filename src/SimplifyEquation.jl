@@ -6,7 +6,7 @@ import ..UtilsModule: isbad, isgood
 
 _una_op_kernel(f::F, l::T) where {F,T} = f(l)
 _bin_op_kernel(f::F, l::T, r::T) where {F,T} = f(l, r)
-_multin_op_kernel(f::F, cdrn::Tuple) where {F} = f(cdrn)
+_multin_op_kernel(f::F, cdrn::Tuple) where {F} = f(cdrn...)
 
 # Simplify tree
 function combine_operators(tree::Node{T}, operators::AbstractOperatorEnum) where {T}
@@ -159,7 +159,7 @@ function simplify_tree(tree::Node{T}, operators::AbstractOperatorEnum) where {T}
             end
 
             # Actually compute:
-            out = _multin_op_kernel(operators.multinops[tree.op], Tuple(v for v in vs))
+            out = _multin_op_kernel(operators.multinops[tree.op][1], Tuple(v for v in vs))
             if isbad(out)
                 return tree
             end

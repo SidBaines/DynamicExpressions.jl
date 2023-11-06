@@ -137,7 +137,7 @@ function _eval_tree_array(
         # op(x, y), for any x or y
         return deg2_eval(cumulator_l, cumulator_r, op, Val(turbo))
     else # if degree > 2
-        op = operators.multinops[tree.op]
+        op = operators.multinops[tree.op][1]
         cumulators = []
         for (nc, child) in enumerate(tree.children)
             (cumulator, complete) = _eval_tree_array(child, cX, operators, Val(turbo))
@@ -370,7 +370,7 @@ function _eval_constant_tree(
     elseif tree.degree == 2
         return deg2_eval_constant(tree, operators.binops[tree.op], operators)
     else#if degree > 2
-        return degn_eval_constant(tree, operators.multinops[tree.op], operators)
+        return degn_eval_constant(tree, operators.multinops[tree.op][1], operators)
     end
 end
 
@@ -431,7 +431,7 @@ function differentiable_eval_tree_array(
     elseif tree.degree == 2
         return deg2_diff_eval(tree, cX, operators.binops[tree.op], operators)
     else#if degree > 2
-        return degn_diff_eval(tree, cX, operators.multinops[tree.op], operators)
+        return degn_diff_eval(tree, cX, operators.multinops[tree.op][1], operators)
     end
 end
 
@@ -566,7 +566,7 @@ function _eval_tree_array_generic(
         )
     else#if degree > 2
         return degn_eval_generic(
-            tree, cX, operators.multinops[tree.op], operators, Val(throw_errors)
+            tree, cX, operators.multinops[tree.op][1], operators, Val(throw_errors)
         )
     end
 end

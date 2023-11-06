@@ -291,7 +291,7 @@ function _extend_operators(operators, skip_user_operators, kws, __module__::Modu
             empty!($(LATEST_UNARY_OPERATOR_MAPPING))
         end
         for (op, func) in enumerate($(operators).multinops)
-            local f = Symbol(func)
+            local f = Symbol(func[1])
             local skip = false
             if isdefined(Base, f)
                 f = :(Base.$(f))
@@ -300,13 +300,13 @@ function _extend_operators(operators, skip_user_operators, kws, __module__::Modu
             else
                 f = :($($__module__).$(f))
             end
-            $(LATEST_MULTINARY_OPERATOR_MAPPING)[func] = op
+            $(LATEST_MULTINARY_OPERATOR_MAPPING)[func[1]] = op
             skip && continue
             # Avoid redefining methods:
-            if (!haskey(unary_exists, func)) && (!haskey(binary_exists, func))
+            if (!haskey(unary_exists, func[1])) && (!haskey(binary_exists, func[1]))
                 eval($muliinary_ex)
-                unary_exists[func] = true
-                binary_exists[func] = true
+                unary_exists[func[1]] = true
+                binary_exists[func[1]] = true
             end
         end
         for (op, func) in enumerate($(operators).binops)
@@ -393,7 +393,7 @@ macro extend_operators_base(operators, kws...)
 end
 
 """
-    OperatorEnum(; binary_operators=[], unary_operators=[],
+    OperatorEnum(; multinary_operators=[], binary_operators=[], unary_operators=[],
                    enable_autodiff::Bool=false, define_helper_functions::Bool=true,
                    empty_old_operators::Bool=true)
 
@@ -420,19 +420,24 @@ function OperatorEnum(;
     define_helper_functions::Bool=true,
     empty_old_operators::Bool=true,
 )
-    @assert length(binary_operators) > 0 || length(unary_operators) > 0#|| length(multinary_operators) > 0
+    @assert length(binary_operators) > 0 || length(unary_operators) > 0 || length(multinary_operators) > 0
 
-    multinary_operators = Function[op for op in multinary_operators]
+    
+    multinary_operators_new = Vector{Tuple{Function, Int64}}()
+    for (op, arity) in multinary_operators
+        push!(multinary_operators_new, (op, arity))
+    end
+    multinary_operators = multinary_operators_new
     binary_operators = Function[op for op in binary_operators]
     unary_operators = Function[op for op in unary_operators]
 
-    diff_multinary_operators = Function[]
+    diff_multinary_operators = Vector{Tuple{Function, Int64}}()
     diff_binary_operators = Function[]
     diff_unary_operators = Function[]
 
     if enable_autodiff
-        for op in multinary_operators
-            push!(diff_multinary_operators, _zygote_gradient(op, Val(3)))
+        for (op, arity) in multinary_operators
+            push!(diff_multinary_operators, (_zygote_gradient(op, Val(3)), arity))
         end
         for op in binary_operators
             push!(diff_binary_operators, _zygote_gradient(op, Val(2)))
@@ -483,7 +488,11 @@ function GenericOperatorEnum(;
 )
     @assert length(binary_operators) > 0 || length(unary_operators) > 0 || length(multinary_operators) > 0
 
-    multinary_operators = Function[op for op in multinary_operators]
+    multinary_operators_new = Vector{Tuple{Function, Int64}}()
+    for (op, arity) in multinary_operators
+        push!(multinary_operators_new, (op, arity))
+    end
+    multinary_operators = multinary_operators_new
     binary_operators = Function[op for op in binary_operators]
     unary_operators = Function[op for op in unary_operators]
 

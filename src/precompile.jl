@@ -20,8 +20,9 @@ end
 Test all combinations of the given operators and types. Useful for precompilation.
 # ToDo (Sid) Add the multinary operators in here
 """
-function test_all_combinations(; binary_operators, unary_operators, turbo, types)
-    for binops in binary_operators,
+function test_all_combinations(; multinary_operators, binary_operators, unary_operators, turbo, types)
+    for multinops in multinary_operators,
+        binops in binary_operators,
         unaops in unary_operators,
         use_turbo in turbo,
         T in types
@@ -31,7 +32,7 @@ function test_all_combinations(; binary_operators, unary_operators, turbo, types
 
         X = rand(T, 3, 10)
         operators = OperatorEnum(;
-            binary_operators=binops, unary_operators=unaops, define_helper_functions=false
+            multinary_operators=multinops, binary_operators=binops, unary_operators=unaops, define_helper_functions=false
         )
         x = Node(T; feature=1)
         c = Node(T; val=one(T))
@@ -161,15 +162,24 @@ macro maybe_compile_workload(mode, ex)
     end
 end
 
+function mysin(a,b,c)
+    return a*sin(b*c)
+end
+function crazyfun(a,b,c,d,e)
+    return a*sin(b*c) + d^e
+end
+
 """`mode=:precompile` will use `@precompile_*` directives; `mode=:compile` runs."""
 function do_precompilation(; mode=:precompile)
     @maybe_setup_workload mode begin
+        multinary_operators = [[(mysin, 3), (crazyfun, 5)]]
         binary_operators = [[+, -, *, /]]
         unary_operators = [[sin, cos]]
         turbo = [false]
         types = [Float32, Float64]
         @maybe_compile_workload mode begin
             test_all_combinations(;
+                multinary_operators=multinary_operators,
                 binary_operators=binary_operators,
                 unary_operators=unary_operators,
                 turbo=turbo,
@@ -177,6 +187,7 @@ function do_precompilation(; mode=:precompile)
             )
         end
         operators = OperatorEnum(;
+            multinary_operators=multinary_operators[1],
             binary_operators=binary_operators[1],
             unary_operators=unary_operators[1],
             define_helper_functions=false,
