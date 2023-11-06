@@ -98,7 +98,7 @@ function tree_mapreduce(
             for cn in 1:length(t.children)
                 push!(args_v, inner(inner, t.children[cn]))
             end
-            args=Tuple(arg for arg in args)
+            args=Tuple(arg for arg in args_v)
             return @inline(op(@inline(f_branch(t)), args...)) # idk if this should be 'args' or 'args...' ?
         end
     end
@@ -286,7 +286,7 @@ function copy_node(tree::N; preserve_sharing::Bool=false) where {T,N<:Node{T}}
     return tree_mapreduce(
         t -> t.constant ? Node(; val=t.val::T) : Node(T; feature=t.feature),
         identity,
-        (p, c...) -> Node(p.op, c...),
+        (p, c...) -> Node(p.op, [i for i in c]),
         tree,
         N;
         preserve_sharing,
@@ -319,7 +319,7 @@ function convert(
             Node(T1, 0, false, nothing, t.feature)
         end,
         identity,
-        (p, c...) -> Node(p.degree, false, nothing, 0, p.op, c...),
+        (p, c...) -> Node(p.degree, false, nothing, 0, p.op, [i for i in c]),
         tree,
         Node{T1};
         preserve_sharing,

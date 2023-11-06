@@ -31,7 +31,7 @@ function parse_tree_to_eqs(
     children = Tuple(child for child in tree.children)
     # Get the operation
     if tree.degree > 2
-        op = operators.multinops[tree.op]
+        op = operators.multinops[tree.op][1]
     elseif tree.degree == 2
         op = operators.binops[tree.op]
     elseif tree.degree == 1
@@ -63,7 +63,7 @@ function convert_to_function(
         return operators.binops[ind]
     else
         ind = findoperation(x.name, operators.multinops)
-        return operators.multinops[ind]
+        return operators.multinops[ind][1]
         # throw(AssertionError("Function $(String(x.name)) has degree > 2 !"))
     end
 end
