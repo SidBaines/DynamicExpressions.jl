@@ -151,7 +151,7 @@ function simplify_tree(tree::Node{T}, operators::AbstractOperatorEnum) where {T}
         if constantsBelow
             # NaN checks
             vs = Vector{T}
-            for cn in 1:legnth(tree.children)
+            for cn in 1:length(tree.children)
                 push!(vs,tree.children[cn].val::T)
             end
             if any(v->isbad(v), vs)
