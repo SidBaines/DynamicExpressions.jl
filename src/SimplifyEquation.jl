@@ -150,7 +150,7 @@ function simplify_tree(tree::Node{T}, operators::AbstractOperatorEnum) where {T}
         constantsBelow = all(i->(i.degree == 0 && i.constant), tree.children)
         if constantsBelow
             # NaN checks
-            vs = Vector{T}
+            vs = Vector{T}()
             for cn in 1:length(tree.children)
                 push!(vs,tree.children[cn].val::T)
             end
