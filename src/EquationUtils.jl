@@ -99,7 +99,7 @@ end
 # than adding a new attribute to Node.
 mutable struct NodeIndex
     constant_index::UInt16  # Index of this constant (if a constant exists here)
-    children::Vector{NodeIndex}
+    children::Tuple{Vararg{NodeIndex}}
 
     NodeIndex() = new()
 end
@@ -122,19 +122,16 @@ function index_constants!(tree::Node, index_tree::NodeIndex, left_index)
         end
     elseif tree.degree == 1
         index_tree.constant_index = count_constants(tree.children[1])
-        index_tree.children = [NodeIndex()]
+        index_tree.children = (NodeIndex(),)
         index_constants!(tree.children[1], index_tree.children[1], left_index)
     elseif tree.degree == 2
-        index_tree.children = [NodeIndex(), NodeIndex()]
+        index_tree.children = (NodeIndex(), NodeIndex())
         index_constants!(tree.children[1], index_tree.children[1], left_index)
         index_tree.constant_index = count_constants(tree.children[1])
         left_index_here = left_index + index_tree.constant_index
         index_constants!(tree.children[2], index_tree.children[2], left_index_here)
     else
-        index_tree.children = []
-        for n in 1:length(tree.children)
-            push!(index_tree, NodeIndex())
-        end
+        index_tree.children = Tuple(NodeIndex() for n in 1:length(tree.children))
         for n in 1:length(tree.children)
             if n == 1
                 left_index_here = left_index

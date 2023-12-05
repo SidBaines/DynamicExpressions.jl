@@ -19,14 +19,13 @@ function combine_operators(tree::Node{T}, operators::AbstractOperatorEnum) where
     if tree.degree == 0
         return tree
     elseif tree.degree == 1
-        tree.children[1] = combine_operators(tree.children[1], operators)
+        tree.children = (combine_operators(tree.children[1], operators),)
     elseif tree.degree == 2
-        tree.children[1] = combine_operators(tree.children[1], operators)
-        tree.children[2] = combine_operators(tree.children[2], operators)
+        l=tree.children[1]
+        r=tree.children[2]
+        tree.children = (combine_operators(l, operators), combine_operators(r, operators))
     else
-        for cn in 1:length(tree.children)
-            tree.children[cn] = combine_operators(tree.children[cn], operators)
-        end
+        tree.children = Tuple(combine_operators(ch, operators) for ch in tree.children)
     end
 
     top_level_constant = tree.degree == 2 && (tree.children[1].constant || tree.children[2].constant)
@@ -39,9 +38,8 @@ function combine_operators(tree::Node{T}, operators::AbstractOperatorEnum) where
         op = tree.op
         # Put the constant in r. Need to assume var in left for simplification assumption.
         if tree.children[1].constant
-            tmp = tree.children[2]
-            tree.children[2] = tree.children[1]
-            tree.children[1] = tmp
+            nc = (tree.children[2], tree.children[1])
+            tree.children = nc
         end
         topconstant = tree.children[2].val::T
         # Simplify down first
@@ -71,15 +69,14 @@ function combine_operators(tree::Node{T}, operators::AbstractOperatorEnum) where
                     l = tree.children[1]
                     r = tree.children[2]
                     simplified_const = -(l.val::T - r.children[1].val::T) #neg(sub(l.val, r.children[1].val))
-                    tree.children[1] = tree.children[2].children[2]
-                    tree.children[2] = l
+                    tree.children = (r.children[2], l)
                     tree.children[2].val = simplified_const
                 elseif tree.children[2].children[2].constant
                     #(const - (var - const)) => (const - var)
                     l = tree.children[1]
                     r = tree.children[2]
                     simplified_const = l.val::T + r.children[2].val::T #plus(l.val, r.children[2].val)
-                    tree.children[2] = tree.children[2].children[1]
+                    tree.children = (l, r.children[1])
                     tree.children[1].val = simplified_const
                 end
             end
@@ -90,15 +87,14 @@ function combine_operators(tree::Node{T}, operators::AbstractOperatorEnum) where
                     l = tree.children[1]
                     r = tree.children[2]
                     simplified_const = l.children[1].val::T - r.val::T#sub(l.children[1].val, r.val)
-                    tree.children[2] = tree.children[1].children[2]
-                    tree.children[1] = r
+                    tree.children = (r, tree.children[1].children[2])
                     tree.children[1].val = simplified_const
                 elseif tree.children[1].children[2].constant
                     #((var - const) - const) => (var - const)
                     l = tree.children[1]
                     r = tree.children[2]
                     simplified_const = r.val::T + l.children[2].val::T #plus(r.val, l.children[2].val)
-                    tree.children[1] = tree.children[1].children[1]
+                    tree.children = (tree.children[1].children[1], r)
                     tree.children[2].val = simplified_const
                 end
             end
@@ -111,7 +107,7 @@ end
 # TODO: This will get much more powerful with the tree-map functions.
 function simplify_tree(tree::Node{T}, operators::AbstractOperatorEnum) where {T}
     if tree.degree == 1
-        tree.children[1] = simplify_tree(tree.children[1], operators)
+        tree.children = (simplify_tree(tree.children[1], operators),)
         if tree.children[1].degree == 0 && tree.children[1].constant
             l = tree.children[1].val::T
             if isgood(l)
@@ -123,8 +119,9 @@ function simplify_tree(tree::Node{T}, operators::AbstractOperatorEnum) where {T}
             end
         end
     elseif tree.degree == 2
-        tree.children[1] = simplify_tree(tree.children[1], operators)
-        tree.children[2] = simplify_tree(tree.children[2], operators)
+        l = tree.children[1]
+        r = tree.children[2]
+        tree.children = (simplify_tree(l, operators), simplify_tree(r, operators))
         constantsBelow = (
             tree.children[1].degree == 0 && tree.children[1].constant && tree.children[2].degree == 0 && tree.children[2].constant
         )
@@ -144,9 +141,11 @@ function simplify_tree(tree::Node{T}, operators::AbstractOperatorEnum) where {T}
             return Node(T; val=convert(T, out))
         end
     elseif tree.degree > 2
+        chs = Vector{Node{T}}()
         for cn in 1:length(tree.children)
-            tree.children[cn] = simplify_tree(tree.children[cn], operators)
+            push!(chs,simplify_tree(tree.children[cn], operators))
         end
+        tree.children = Tuple(ch for ch in chs)
         constantsBelow = all(i->(i.degree == 0 && i.constant), tree.children)
         if constantsBelow
             # NaN checks

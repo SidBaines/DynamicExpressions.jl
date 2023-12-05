@@ -48,7 +48,7 @@ nodes, you can evaluate or print a given expression.
     operator in `operators.binops`. In other words, this is an enum
     of the operators, and is dependent on the specific `OperatorEnum`
     object. Only defined if `degree >= 1`
-- `children::Vector{Node{T}}`: Children the node. Only defined if `degree >= 1`.
+- `children::Tuple{Vararg{Node{T}}}`: Children the node. Only defined if `degree >= 1`.
     Same type as the parent node.
 """
 mutable struct Node{T} <: AbstractNode
@@ -58,7 +58,7 @@ mutable struct Node{T} <: AbstractNode
     # ------------------- (possibly undefined below)
     feature::UInt16  # If is a variable (e.g., x in cos(x)), this stores the feature index.
     op::UInt8  # If operator, this is the index of the operator in operators.binops, or operators.unaops
-    children::Vector{Node{T}} # Child nodes. Only defined for degree>=1. # Should I make this a tuple?? Possibly safer/better??
+    children::Tuple{Vararg{Node{T}}} # Vararg or Ntuple?
 
     #################
     ## Constructors:
@@ -66,9 +66,9 @@ mutable struct Node{T} <: AbstractNode
     Node(d::Integer, c::Bool, v::_T) where {_T} = new{_T}(UInt8(d), c, v)
     Node(::Type{_T}, d::Integer, c::Bool, v::_T) where {_T} = new{_T}(UInt8(d), c, v)
     Node(::Type{_T}, d::Integer, c::Bool, v::Nothing, f::Integer) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f))
-    Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, l::Node{_T}) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), [l])
-    Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, l::Node{_T}, r::Node{_T}) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), [l, r])
-    Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, cs::Vector{Node{_T}}) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), cs)
+    Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, l::Node{_T}) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), (l,))
+    Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, l::Node{_T}, r::Node{_T}) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), (l, r))
+    Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, cs::Tuple{Vararg{Node{_T}}}) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), cs)
 
 end
 ################################################################################
@@ -133,7 +133,7 @@ end
 
 Apply unary operator `op` (enumerating over the order given) to `Node` `l`
 """
-Node(op::Integer, l::Node{T}) where {T} = Node(1, false, nothing, 0, op, [l])
+Node(op::Integer, l::Node{T}) where {T} = Node(1, false, nothing, 0, op, (l,))
 
 """
     Node(op::Integer, l::Node, r::Node)
@@ -148,16 +148,16 @@ function Node(op::Integer, l::Node{T1}, r::Node{T2}) where {T1,T2}
         l = convert(Node{T}, l)
         r = convert(Node{T}, r)
     end
-    return Node(2, false, nothing, 0, op, [l, r])
+    return Node(2, false, nothing, 0, op, (l, r))
 end
 
 """
-    Node(op::Integer, children::Vector{Node})
+    Node(op::Integer, children::Tuple{Vararg{Node{T}}})
 
 Apply multi arity operator `op` (enumerating over the order given) to `Node`s in the Vector `children`
 Assumes all have the same type T.
 """
-function Node(op::Integer, children::Vector{Node{T}}) where {T}
+function Node(op::Integer, children::Tuple{Vararg{Node{T}}}) where {T}
     #print("Hey look I'm creating a node!\n")
     return Node(length(children), false, nothing, 0, op, children)
 end

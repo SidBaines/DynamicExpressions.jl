@@ -129,8 +129,14 @@ function any(f::F, tree::AbstractNode) where {F<:Function}
         return @inline(f(tree))::Bool || any(f, tree.children[1]) || any(f, tree.children[2])
     else
         fl = @inline(f(tree))::Bool
+        if fl
+            return fl
+        end
         for child in tree.children
             fl = fl || any(f, child)
+            if fl
+                return fl
+            end
         end
         return fl
     end
@@ -286,7 +292,7 @@ function copy_node(tree::N; preserve_sharing::Bool=false) where {T,N<:Node{T}}
     return tree_mapreduce(
         t -> t.constant ? Node(; val=t.val::T) : Node(T; feature=t.feature),
         identity,
-        (p, c...) -> Node(p.op, [i for i in c]),
+        (p, c...) -> Node(p.op, Tuple(i for i in c)),
         tree,
         N;
         preserve_sharing,
@@ -319,7 +325,7 @@ function convert(
             Node(T1, 0, false, nothing, t.feature)
         end,
         identity,
-        (p, c...) -> Node(p.degree, false, nothing, 0, p.op, [i for i in c]),
+        (p, c...) -> Node(p.degree, false, nothing, 0, p.op, Tuple(i for i in c)),
         tree,
         Node{T1};
         preserve_sharing,
