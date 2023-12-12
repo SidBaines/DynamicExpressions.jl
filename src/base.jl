@@ -298,6 +298,8 @@ function copy_node(tree::N; preserve_sharing::Bool=false) where {T,N<:Node{T}}
         N;
         preserve_sharing,
     )
+    # return deepcopy(tree)
+    # return copy(tree)
 end
 
 copy(tree::Node; kws...) = copy_node(tree; kws...)
