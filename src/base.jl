@@ -292,7 +292,8 @@ function copy_node(tree::N; preserve_sharing::Bool=false) where {T,N<:Node{T}}
     return tree_mapreduce(
         t -> t.constant ? Node(; val=t.val::T) : Node(T; feature=t.feature),
         identity,
-        (p, c...) -> Node(p.op, Tuple(i for i in c)),
+        # (p, c...) -> Node(p.op, Tuple(i for i in c)),
+        (p, c...) -> Node(p.op, c),
         tree,
         N;
         preserve_sharing,
