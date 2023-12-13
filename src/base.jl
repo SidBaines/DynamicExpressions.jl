@@ -94,12 +94,8 @@ function tree_mapreduce(
         elseif t.degree == 2
             return @inline(op(@inline(f_branch(t)), inner(inner, t.children[1]), inner(inner, t.children[2])))
         elseif t.degree > 2
-            args_v = []
-            for cn in 1:length(t.children)
-                push!(args_v, inner(inner, t.children[cn]))
-            end
-            args=Tuple(arg for arg in args_v)
-            return @inline(op(@inline(f_branch(t)), args...)) # idk if this should be 'args' or 'args...' ?
+            # args=Tuple(inner(inner, child) for child in t.children)
+            return @inline(op(@inline(f_branch(t)), inner(inner, child) for child in t.children)) # idk if this should be 'args' or 'args...' ?
         end
     end
 
