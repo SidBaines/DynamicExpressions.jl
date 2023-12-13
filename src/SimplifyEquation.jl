@@ -141,11 +141,12 @@ function simplify_tree(tree::Node{T}, operators::AbstractOperatorEnum) where {T}
             return Node(T; val=convert(T, out))
         end
     elseif tree.degree > 2
-        chs = Vector{Node{T}}()
-        for cn in 1:length(tree.children)
-            push!(chs,simplify_tree(tree.children[cn], operators))
-        end
-        tree.children = Tuple(ch for ch in chs)
+        # chs = Vector{Node{T}}()
+        # for cn in 1:length(tree.children)
+        #     push!(chs,simplify_tree(tree.children[cn], operators))
+        # end
+        # tree.children = Tuple(ch for ch in chs)
+        tree.children = Tuple(simplify_tree(child, operators) for child in tree.children)
         constantsBelow = all(i->(i.degree == 0 && i.constant), tree.children)
         if constantsBelow
             # NaN checks
