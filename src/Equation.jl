@@ -69,6 +69,7 @@ mutable struct Node{T} <: AbstractNode
     Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, l::Node{_T}) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), (l,))
     Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, l::Node{_T}, r::Node{_T}) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), (l, r))
     Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, cs::Tuple{Vararg{Node{_T}}}) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), cs)
+    Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, cs::Node{_T}...) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), Tuple(c for c in cs))
 
 end
 ################################################################################
