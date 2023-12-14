@@ -163,6 +163,17 @@ function Node(op::Integer, children::Tuple{Vararg{Node{T}}}) where {T}
 end
 
 """
+    Node(op::Integer, children::Node{T}...)
+
+Apply multi arity operator `op` (enumerating over the order given) to `Node`s in the Vector `children`
+Assumes all have the same type T.
+"""
+function Node(op::Integer, children::Node{T}...) where {T}
+    #print("Hey look I'm creating a node!\n")
+    return Node(length(children), false, nothing, 0, op, Tuple(c for c in children))
+end
+
+"""
     Node(var_string::String)
 
 Create a variable node, using the format `"x1"` to mean feature 1

@@ -324,7 +324,7 @@ function convert(
             Node(T1, 0, false, nothing, t.feature)
         end,
         identity,
-        (p, c...) -> Node(p.degree, false, nothing, 0, p.op, c),
+        (p, c...) -> Node(p.degree, false, nothing, 0, p.op, c...),
         tree,
         Node{T1};
         preserve_sharing,
