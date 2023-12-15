@@ -69,7 +69,7 @@ mutable struct Node{T} <: AbstractNode
     Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, l::Node{_T}) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), (l,))
     Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, l::Node{_T}, r::Node{_T}) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), (l, r))
     Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, cs::Tuple{Vararg{Node{_T}}}) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), cs)
-    Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, cs::Node{_T}...) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), Tuple(c for c in cs))
+    # Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, cs::Node{_T}...) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), Tuple(c for c in cs))
 
 end
 ################################################################################
@@ -163,16 +163,16 @@ function Node(op::Integer, children::Tuple{Vararg{Node{T}}}) where {T}
     return Node(length(children), false, nothing, 0, op, children)
 end
 
-"""
-    Node(op::Integer, children::Node{T}...)
+# """
+#     Node(op::Integer, children::Node{T}...)
 
-Apply multi arity operator `op` (enumerating over the order given) to `Node`s in the Vector `children`
-Assumes all have the same type T.
-"""
-function Node(op::Integer, children::Node{T}...) where {T}
-    #print("Hey look I'm creating a node!\n")
-    return Node(length(children), false, nothing, 0, op, Tuple(c for c in children))
-end
+# Apply multi arity operator `op` (enumerating over the order given) to `Node`s in the Vector `children`
+# Assumes all have the same type T.
+# """
+# function Node(op::Integer, children::Node{T}...) where {T}
+#     #print("Hey look I'm creating a node!\n")
+#     return Node(length(children), false, nothing, 0, op, Tuple(c for c in children))
+# end
 
 """
     Node(var_string::String)

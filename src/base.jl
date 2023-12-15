@@ -86,7 +86,8 @@ function tree_mapreduce(
     # Trick taken from here:
     # https://discourse.julialang.org/t/recursive-inner-functions-a-thousand-times-slower/85604/5
     # to speed up recursive closure
-    @memoize_on t function inner(inner, t)
+    # @memoize_on t function inner(inner, t)
+    function inner(inner, t)
         if t.degree == 0
             return @inline(f_leaf(t))
         elseif t.degree == 1
@@ -95,7 +96,9 @@ function tree_mapreduce(
             return @inline(op(@inline(f_branch(t)), inner(inner, t.children[1]), inner(inner, t.children[2])))
         elseif t.degree > 2
             # args=Tuple(inner(inner, child) for child in t.children)
-            return @inline(op(@inline(f_branch(t)), [inner(inner, child) for child in t.children]...)) # idk if this should be 'args' or 'args...' ?
+            # return @inline(op(@inline(f_branch(t)), inner(inner, child) for child in t.children)) # idk if this should be 'args' or 'args...' ?
+            return @inline(op(@inline(f_branch(t)), (inner(inner, child) for child in t.children)...)) # idk if this should be 'args' or 'args...' ?
+            # return @inline(op(@inline(f_branch(t)), [inner(inner, child) for child in t.children]...)) # idk if this should be 'args' or 'args...' ?
         end
     end
 
@@ -104,7 +107,8 @@ function tree_mapreduce(
         throw(ArgumentError("Need to specify `result_type` if you use `preserve_sharing`."))
 
     if preserve_sharing && RT != Nothing
-        return @with_memoize inner(inner, tree) IdDict{typeof(tree),RT}()
+        # return @with_memoize inner(inner, tree) IdDict{typeof(tree),RT}()
+        return inner(inner, tree)
     else
         return inner(inner, tree)
     end
@@ -289,7 +293,9 @@ function copy_node(tree::N; preserve_sharing::Bool=false) where {T,N<:Node{T}}
         t -> t.constant ? Node(; val=t.val::T) : Node(T; feature=t.feature),
         identity,
         # (p, c...) -> Node(p.op, Tuple(i for i in c)),
-        (p, c...) -> Node(p.op, c...),
+        (p, c...) -> Node(p.op, c),
+        # (p, c...) -> Node(p.op, c...),
+        # (p, c...) -> p.degree>2 ? Node(p.op, c...) : Node(p.op, c),
         tree,
         N;
         preserve_sharing,
@@ -324,7 +330,9 @@ function convert(
             Node(T1, 0, false, nothing, t.feature)
         end,
         identity,
-        (p, c...) -> Node(p.degree, false, nothing, 0, p.op, c...),
+        (p, c...) -> Node(p.degree, false, nothing, 0, p.op, c),
+        # (p, c...) -> Node(p.degree, false, nothing, 0, p.op, c...),
+        # (p, c...) -> p.degree>2 ? Node(p.degree, false, nothing, 0, p.op, c) : Node(p.degree, false, nothing, 0, p.op, c...),
         tree,
         Node{T1};
         preserve_sharing,
