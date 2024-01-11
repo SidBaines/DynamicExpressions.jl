@@ -68,8 +68,10 @@ mutable struct Node{T} <: AbstractNode
     Node(::Type{_T}, d::Integer, c::Bool, v::Nothing, f::Integer) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f))
     Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, l::Node{_T}) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), [l])
     Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, l::Node{_T}, r::Node{_T}) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), [l, r])
+    Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, l::Node{_T}, lm::Node{_T}, rm::Node{_T}) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), [l, lm, rm])
+    Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, l::Node{_T}, lm::Node{_T}, rm::Node{_T}, r::Node{_T}) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), [l, lm, rm, r])
     Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, cs::Vector{Node{_T}}) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), cs)
-    Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, cs::Node{_T}...) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), [c for c in cs])
+    # Node(d::Integer, c::Bool, v::Nothing, f::Integer, o::Integer, cs::Node{_T}...) where {_T} = new{_T}(UInt8(d), c, v, UInt16(f), UInt8(o), [c for c in cs])
 
 end
 ################################################################################
@@ -153,6 +155,41 @@ function Node(op::Integer, l::Node{T1}, r::Node{T2}) where {T1,T2}
 end
 
 """
+    Node(op::Integer, l::Node, r::Node, r2::Node)
+
+Apply multinary operator `op` (enumerating over the order given) to `Node`s `l` and `r` and `r2`
+"""
+function Node(op::Integer, l::Node{T1}, r::Node{T2}, r2::Node{T3}) where {T1,T2, T3}
+    #print("Hey look I'm creating a node!\n")
+    # Get highest type:
+    if !(T1 == T2 == T3)
+        T = promote_type(T1, T2, T3)
+        l = convert(Node{T}, l)
+        r = convert(Node{T}, r)
+        r2 = convert(Node{T}, r2)
+    end
+    return Node(3, false, nothing, 0, op, [l, r, r2])
+end
+
+"""
+    Node(op::Integer, l::Node, r::Node, r2::Node, r3::Node)
+
+Apply multinary operator `op` (enumerating over the order given) to `Node`s `l` and `r` and `r2` and `r3`
+"""
+function Node(op::Integer, l::Node{T1}, r::Node{T2}, r2::Node{T3}, r3::Node{T4}) where {T1,T2, T3,T4}
+    #print("Hey look I'm creating a node!\n")
+    # Get highest type:
+    if !(T1 == T2 == T3 == T4)
+        T = promote_type(T1, T2, T3, T4)
+        l = convert(Node{T}, l)
+        r = convert(Node{T}, r)
+        r2 = convert(Node{T}, r2)
+        r3 = convert(Node{T}, r3)
+    end
+    return Node(4, false, nothing, 0, op, [l, r, r2, r3])
+end
+
+"""
     Node(op::Integer, children::Vector{Node{T}})
 
 Apply multi arity operator `op` (enumerating over the order given) to `Node`s in the Vector `children`
@@ -169,10 +206,10 @@ end
 Apply multi arity operator `op` (enumerating over the order given) to `Node`s in the Vector `children`
 Assumes all have the same type T.
 """
-function Node(op::Integer, children::Tuple{Vararg{Node{T}}}) where {T}
-    #print("Hey look I'm creating a node!\n")
-    return Node(length(children), false, nothing, 0, op, [child for child in children])
-end
+# function Node(op::Integer, children::Tuple{Vararg{Node{T}}}) where {T}
+#     #print("Hey look I'm creating a node!\n")
+#     return Node(length(children), false, nothing, 0, op, [child for child in children])
+# end
 
 """
     Node(op::Integer, children::{Node{T}...)
