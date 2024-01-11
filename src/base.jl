@@ -93,9 +93,14 @@ function tree_mapreduce(
             return @inline(op(@inline(f_branch(t)), inner(inner, t.children[1])))
         elseif t.degree == 2
             return @inline(op(@inline(f_branch(t)), inner(inner, t.children[1]), inner(inner, t.children[2])))
-        elseif t.degree > 2
+        elseif t.degree == 3
+            return @inline(op(@inline(f_branch(t)), inner(inner, t.children[1]), inner(inner, t.children[2]), inner(inner, t.children[3])))
+        elseif t.degree == 4
+            return @inline(op(@inline(f_branch(t)), inner(inner, t.children[1]), inner(inner, t.children[2]), inner(inner, t.children[3]), inner(inner, t.children[4])))
+        elseif t.degree > 4
             # args=Tuple(inner(inner, child) for child in t.children)
             return @inline(op(@inline(f_branch(t)), [inner(inner, child) for child in t.children]...)) # idk if this should be 'args' or 'args...' ?
+            # return @inline(op(@inline(f_branch(t)), inner(inner, child) for child in t.children...))
         end
     end
 
