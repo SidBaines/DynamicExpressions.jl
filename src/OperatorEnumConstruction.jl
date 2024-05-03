@@ -6,6 +6,7 @@ import ..StringsModule: string_tree
 import ..EvaluateEquationModule: eval_tree_array, OPERATOR_LIMIT_BEFORE_SLOWDOWN
 import ..EvaluateEquationDerivativeModule: eval_grad_tree_array, _zygote_gradient
 import ..EvaluationHelpersModule: _grad_evaluator
+import ..UtilsModule: FuncArityPair
 
 """Used to set a default value for `operators` for ease of use."""
 @enum AvailableOperatorTypes::UInt8 begin
@@ -22,10 +23,14 @@ const LATEST_OPERATORS = Ref{Union{Nothing,AbstractOperatorEnum}}(nothing)
 const LATEST_OPERATORS_TYPE = Ref{AvailableOperatorTypes}(IsNothing)
 const LATEST_UNARY_OPERATOR_MAPPING = Dict{Function,fieldtype(Node{Float64}, :op)}()
 const LATEST_BINARY_OPERATOR_MAPPING = Dict{Function,fieldtype(Node{Float64}, :op)}()
+const LATEST_ANYARY_OPERATOR_MAPPING = Dict{Function,fieldtype(Node{Float64}, :op)}()
 const ALREADY_DEFINED_UNARY_OPERATORS = (;
     operator_enum=Dict{Function,Bool}(), generic_operator_enum=Dict{Function,Bool}()
 )
 const ALREADY_DEFINED_BINARY_OPERATORS = (;
+    operator_enum=Dict{Function,Bool}(), generic_operator_enum=Dict{Function,Bool}()
+)
+const ALREADY_DEFINED_ANYARY_OPERATORS = (;
     operator_enum=Dict{Function,Bool}(), generic_operator_enum=Dict{Function,Bool}()
 )
 const LATEST_VARIABLE_NAMES = Ref{Vector{String}}(String[])
@@ -94,7 +99,7 @@ function set_default_operators!(operators::GenericOperatorEnum)
 end
 
 function lookup_op(@nospecialize(f), ::Val{degree}) where {degree}
-    mapping = degree == 1 ? LATEST_UNARY_OPERATOR_MAPPING : LATEST_BINARY_OPERATOR_MAPPING
+    mapping = degree == 1 ? LATEST_UNARY_OPERATOR_MAPPING : (degree == 2 ? LATEST_BINARY_OPERATOR_MAPPING : LATEST_ANYARY_OPERATOR_MAPPING)
     if !haskey(mapping, f)
         error(
             "Convenience constructor for operator `$(f)` is out-of-date. " *
@@ -205,6 +210,56 @@ function _extend_binary_operator(f::Symbol, type_requirements, build_converters,
     end
 end
 
+function _extend_anyary_operator(f::Symbol, type_requirements, build_converters, internal)
+    quote
+        @gensym _constructorof _AbstractExpressionNode
+        quote
+            if $$internal
+                import ..EquationModule.constructorof as $_constructorof
+                import ..EquationModule.AbstractExpressionNode as $_AbstractExpressionNode
+            else
+                using DynamicExpressions:
+                    constructorof as $_constructorof,
+                    AbstractExpressionNode as $_AbstractExpressionNode
+            end
+
+            function $($f)(
+                nodes::Union{N, T}...
+            ) where {T<:$($type_requirements),N<:$_AbstractExpressionNode{T}}
+                if all((child.degree == 0 && child.constant) for child in tree.children) # All constants so we can just evaluate it
+                    $_constructorof(N)(T; val=$($f)((child.val for child in tree.children)...))
+                else # not all constants, so we set
+                    latest_op_idx = $($lookup_op)($($f), Val(2))
+                    $_constructorof(N)(; op=latest_op_idx, [typeof(arg)<:N ? arg : $_constructorof(N)(T;val=arg) for arg in nodes])
+                end
+            end
+            # TODO I'm ignoring the converters for now, should (maybe (?)) do this at some point?
+            # if $($build_converters)
+            #     # Converters:
+            #     function $($f)(l::$_AbstractExpressionNode, r::$_AbstractExpressionNode)
+            #         if l isa GraphNode || r isa GraphNode
+            #             error(
+            #                 "Refusing to promote `GraphNode` as it would break the graph structure. " *
+            #                 "Please convert to a common type first.",
+            #             )
+            #         end
+            #         return $($f)(promote(l, r)...)
+            #     end
+            #     function $($f)(
+            #         l::$_AbstractExpressionNode{T1}, r::T2
+            #     ) where {T1<:$($type_requirements),T2<:$($type_requirements)}
+            #         return $($f)(l, convert(T1, r))
+            #     end
+            #     function $($f)(
+            #         l::T1, r::$_AbstractExpressionNode{T2}
+            #     ) where {T1<:$($type_requirements),T2<:$($type_requirements)}
+            #         return $($f)(convert(T2, l), r)
+            #     end
+            # end
+        end
+    end
+end
+
 function _extend_operators(operators, skip_user_operators, kws, __module__::Module)
     if !all(x -> first(x.args) ∈ (:empty_old_operators, :internal), kws)
         error(
@@ -229,7 +284,8 @@ function _extend_operators(operators, skip_user_operators, kws, __module__::Modu
         false
     end
 
-    @gensym f skip type_requirements build_converters binary_exists unary_exists
+    @gensym f skip type_requirements build_converters anyary_exists binary_exists unary_exists
+    anyary_ex = _extend_anyary_operator(f, type_requirements, build_converters, internal)
     binary_ex = _extend_binary_operator(f, type_requirements, build_converters, internal)
     unary_ex = _extend_unary_operator(f, type_requirements, internal)
     return quote
@@ -240,18 +296,40 @@ function _extend_operators(operators, skip_user_operators, kws, __module__::Modu
         if isa($operators, $OperatorEnum)
             $type_requirements = Number
             $build_converters = true
+            $anyary_exists = $(ALREADY_DEFINED_ANYARY_OPERATORS).operator_enum
             $binary_exists = $(ALREADY_DEFINED_BINARY_OPERATORS).operator_enum
             $unary_exists = $(ALREADY_DEFINED_UNARY_OPERATORS).operator_enum
         else
             $type_requirements = Any
             $build_converters = false
+            $anyary_exists = $(ALREADY_DEFINED_ANYARY_OPERATORS).generic_operator_enum
             $binary_exists = $(ALREADY_DEFINED_BINARY_OPERATORS).generic_operator_enum
             $unary_exists = $(ALREADY_DEFINED_UNARY_OPERATORS).generic_operator_enum
         end
         if $(empty_old_operators)
             # Trigger errors if operators are not yet defined:
+            empty!($(LATEST_ANYARY_OPERATOR_MAPPING))
             empty!($(LATEST_BINARY_OPERATOR_MAPPING))
             empty!($(LATEST_UNARY_OPERATOR_MAPPING))
+        end
+        for (op, func) in enumerate($(operators).anyops)
+            local $f = Symbol(func.func)
+            local $skip = false
+            if isdefined(Base, $f)
+                $f = :(Base.$($f))
+            elseif $(skip_user_operators)
+                $skip = true
+            else
+                $f = :($($__module__).$($f))
+            end
+            $(LATEST_ANYARY_OPERATOR_MAPPING)[func.func] = op
+            $skip && continue
+            # Avoid redefining methods:
+            if (!haskey($unary_exists, func.func)) && (!haskey($binary_exists, func.func))
+                eval($anyary_ex)
+                $(unary_exists)[func] = true
+                $(binary_exists)[func] = true
+            end
         end
         for (op, func) in enumerate($(operators).binops)
             local $f = Symbol(func)
@@ -266,9 +344,10 @@ function _extend_operators(operators, skip_user_operators, kws, __module__::Modu
             $(LATEST_BINARY_OPERATOR_MAPPING)[func] = op
             $skip && continue
             # Avoid redefining methods:
-            if !haskey($unary_exists, func)
+            if (!haskey($unary_exists, func)) && (!haskey($anyary_exists, func))
                 eval($binary_ex)
                 $(unary_exists)[func] = true
+                $(anyary_exists)[func] = true
             end
         end
         for (op, func) in enumerate($(operators).unaops)
@@ -284,9 +363,10 @@ function _extend_operators(operators, skip_user_operators, kws, __module__::Modu
             $(LATEST_UNARY_OPERATOR_MAPPING)[func] = op
             $skip && continue
             # Avoid redefining methods:
-            if !haskey($binary_exists, func)
+            if (!haskey($binary_exists, func)) && (!haskey($anyary_exists, func))
                 eval($unary_ex)
                 $(binary_exists)[func] = true
+                $(anyary_exists)[func] = true
             end
         end
     end
@@ -337,7 +417,7 @@ macro extend_operators_base(operators, kws...)
 end
 
 """
-    OperatorEnum(; binary_operators=[], unary_operators=[],
+    OperatorEnum(; anyary_operators=[], binary_operators=[], unary_operators=[],
                    define_helper_functions::Bool=true,
                    empty_old_operators::Bool=true)
 
@@ -346,8 +426,10 @@ redefine operators for `AbstractExpressionNode` types, as well as `show`, `print
 `(::AbstractExpressionNode)(X)`. It will automatically compute derivatives with `Zygote.jl`.
 
 # Arguments
+- `anyary_operators::Vector{FuncArityPair}`: A vector of FuncArityPairs, each of which is an 
+  arbitrary arity operator (stored in the .func field) and it's arity (stored in the .arity field).
 - `binary_operators::Vector{Function}`: A vector of functions, each of which is a binary
-  operator.
+operator.
 - `unary_operators::Vector{Function}`: A vector of functions, each of which is a unary
   operator.
 - `define_helper_functions::Bool=true`: Whether to define helper functions for creating
@@ -356,6 +438,7 @@ redefine operators for `AbstractExpressionNode` types, as well as `show`, `print
 - `empty_old_operators::Bool=true`: Whether to clear the old operators.
 """
 function OperatorEnum(;
+    anyary_operators=FuncArityPair[],
     binary_operators=Function[],
     unary_operators=Function[],
     define_helper_functions::Bool=true,
@@ -363,13 +446,13 @@ function OperatorEnum(;
     # Deprecated:
     enable_autodiff=nothing,
 )
-    @assert length(binary_operators) > 0 || length(unary_operators) > 0
+    @assert length(anyary_operators) > 0 || length(binary_operators) > 0 || length(unary_operators) > 0
     enable_autodiff !== nothing && Base.depwarn(
         "The option `enable_autodiff` has been deprecated. " *
         "Differential operators are now automatically computed within the gradient call.",
         :OperatorEnum,
     )
-    for (op, s) in ((binary_operators, "binary"), (unary_operators, "unary"))
+    for (op, s) in ((anyary_operators, "anyary"), (binary_operators, "binary"), (unary_operators, "unary"))
         if length(op) > OPERATOR_LIMIT_BEFORE_SLOWDOWN
             @warn(
                 "You have passed over $(OPERATOR_LIMIT_BEFORE_SLOWDOWN) $(s) operators. " *
@@ -380,7 +463,7 @@ function OperatorEnum(;
         end
     end
 
-    operators = OperatorEnum(Tuple(binary_operators), Tuple(unary_operators))
+    operators = OperatorEnum(Tuple(anyary_operators), Tuple(binary_operators), Tuple(unary_operators))
 
     if define_helper_functions
         @extend_operators_base operators empty_old_operators = empty_old_operators
@@ -391,7 +474,7 @@ function OperatorEnum(;
 end
 
 """
-    GenericOperatorEnum(; binary_operators=[], unary_operators=[],
+    GenericOperatorEnum(; anyary_operators=[], binary_operators=[], unary_operators=[],
                           define_helper_functions::Bool=true, empty_old_operators::Bool=true)
 
 Construct a `GenericOperatorEnum` object, defining possible expressions.
@@ -400,8 +483,10 @@ This will also redefine operators for `AbstractExpressionNode` types, as well as
 and `(::AbstractExpressionNode)(X)`.
 
 # Arguments
+- `anyary_operators::Vector{FuncArityPair}`: A vector of FuncArityPairs, each of which is an 
+  arbitrary arity operator (stored in the .func field) and it's arity (stored in the .arity field).
 - `binary_operators::Vector{Function}`: A vector of functions, each of which is a binary
-  operator.
+operator.
 - `unary_operators::Vector{Function}`: A vector of functions, each of which is a unary
   operator.
 - `define_helper_functions::Bool=true`: Whether to define helper functions for creating
@@ -410,14 +495,15 @@ and `(::AbstractExpressionNode)(X)`.
 - `empty_old_operators::Bool=true`: Whether to clear the old operators.
 """
 function GenericOperatorEnum(;
+    anyary_operators=FuncArityPair[],
     binary_operators=Function[],
     unary_operators=Function[],
     define_helper_functions::Bool=true,
     empty_old_operators::Bool=true,
 )
-    @assert length(binary_operators) > 0 || length(unary_operators) > 0
+    @assert length(anyary_operators) > 0 || length(binary_operators) > 0 || length(unary_operators) > 0
 
-    operators = GenericOperatorEnum(Tuple(binary_operators), Tuple(unary_operators))
+    operators = GenericOperatorEnum(Tuple(anyary_operators), Tuple(binary_operators), Tuple(unary_operators))
 
     if define_helper_functions
         @extend_operators_base operators empty_old_operators = empty_old_operators
@@ -433,15 +519,17 @@ function _overload_common_operators()
     # Overload the operators in batches (so that we don't hit the warning
     # about too many operators)
     operators = OperatorEnum(
+        (),
         (+, -, *, /, ^, max, min, mod),
         (sin, cos, tan, exp, log, log1p, log2, log10, sqrt, cbrt, abs, sinh),
     )
     @extend_operators(operators, empty_old_operators = false, internal = true)
-    operators = OperatorEnum((), (cosh, tanh, atan, asinh, acosh, round, sign, floor, ceil))
+    operators = OperatorEnum((), (), (cosh, tanh, atan, asinh, acosh, round, sign, floor, ceil))
     @extend_operators(operators, empty_old_operators = true, internal = true)
 
     empty!(LATEST_UNARY_OPERATOR_MAPPING)
     empty!(LATEST_BINARY_OPERATOR_MAPPING)
+    empty!(LATEST_ANYARY_OPERATOR_MAPPING)
     return nothing
 end
 _overload_common_operators()

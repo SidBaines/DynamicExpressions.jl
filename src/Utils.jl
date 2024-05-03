@@ -159,4 +159,15 @@ struct ResultOk2{A<:AbstractArray,B<:AbstractArray}
     ok::Bool
 end
 
+"""
+    FuncArityPair{A}
+
+Stores a function and it's arity. This is used 
+    to pass around arbitrary arity operators
+"""
+struct FuncArityPair{A}
+    func::A
+    arity::Int64
+end
+
 end

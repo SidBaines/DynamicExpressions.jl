@@ -10,16 +10,13 @@ const DEFAULT_NODE_TYPE = Float32
 
 Abstract type for binary trees. Must have the following fields:
 
-- `degree::Integer`: Degree of the node. Either 0, 1, or 2. If 1,
-    then `l` needs to be defined as the left child. If 2,
-    then `r` also needs to be defined as the right child.
-- `l::AbstractNode`: Left child of the current node. Should only be
+- `degree::Integer`: Degree of the node. A non-negative integer. If >=1,
+    then `children` needs to be defined
+- `children::Vector{AbstractNode}`: Children of the current node. Should only be
     defined if `degree >= 1`; otherwise, leave it undefined (see the
     the constructors of `Node{T}` for an example).
     Don't use `nothing` to represent an undefined value
     as it will incur a large performance penalty.
-- `r::AbstractNode`: Right child of the current node. Should only
-    be defined if `degree == 2`.
 """
 abstract type AbstractNode end
 
@@ -71,11 +68,8 @@ nodes, you can evaluate or print a given expression.
     operator in `operators.binops`. In other words, this is an enum
     of the operators, and is dependent on the specific `OperatorEnum`
     object. Only defined if `degree >= 1`
-- `l::Node{T}`: Left child of the node. Only defined if `degree >= 1`.
+- `children::Vector{Node{T}}`: Children of the node. Only defined if `degree >= 1`.
     Same type as the parent node.
-- `r::Node{T}`: Right child of the node. Only defined if `degree == 2`.
-    Same type as the parent node. This is to be passed as the right
-    argument to the binary operator.
 
 # Constructors
 
@@ -102,8 +96,7 @@ mutable struct Node{T} <: AbstractExpressionNode{T}
     # ------------------- (possibly undefined below)
     feature::UInt16  # If is a variable (e.g., x in cos(x)), this stores the feature index.
     op::UInt8  # If operator, this is the index of the operator in operators.binops, or operators.unaops
-    l::Node{T}  # Left child node. Only defined for degree=1 or degree=2.
-    r::Node{T}  # Right child node. Only defined for degree=2. 
+    children::Vector{Node{T}}  # Vector of chilren nodes. Only defined for degrees>=1.
 
     #################
     ## Constructors:
@@ -149,8 +142,7 @@ mutable struct GraphNode{T} <: AbstractExpressionNode{T}
     # ------------------- (possibly undefined below)
     feature::UInt16  # If is a variable (e.g., x in cos(x)), this stores the feature index.
     op::UInt8  # If operator, this is the index of the operator in operators.binops, or operators.unaops
-    l::GraphNode{T}  # Left child node. Only defined for degree=1 or degree=2.
-    r::GraphNode{T}  # Right child node. Only defined for degree=2. 
+    children::Vector{GraphNode{T}}  # Vector of children nodes. Only defined for degree>=1
 
     GraphNode{_T}() where {_T} = new{_T}()
 end
@@ -186,21 +178,23 @@ include("base.jl")
 
 #! format: off
 @inline function (::Type{N})(
-    ::Type{T1}=Undefined; val=nothing, feature=nothing, op=nothing, l=nothing, r=nothing, children=nothing, allocator::F=default_allocator,
+    ::Type{T1}=Undefined; val=nothing, feature=nothing, op=nothing, l=nothing, r=nothing, children=nothing, allocator::F=default_allocator, # Should really remove `l` and `r` eventually
 ) where {T1,N<:AbstractExpressionNode,F}
     if children !== nothing
         @assert l === nothing && r === nothing
         if length(children) == 1
-            return node_factory(N, T1, val, feature, op, only(children), nothing, allocator)
+            return node_factory(N, T1, allocator, val, feature, op, only(children), nothing)
+        elseif length(children) == 2
+            return node_factory(N, T1, allocator, val, feature, op, children...)
         else
-            return node_factory(N, T1, val, feature, op, children..., allocator)
+            return node_factory(N, T1, allocator, val, feature, op, children...)
         end
     end
-    return node_factory(N, T1, val, feature, op, l, r, allocator)
+    return node_factory(N, T1, allocator, val, feature, op, l, r)
 end
 """Create a constant leaf."""
 @inline function node_factory(
-    ::Type{N}, ::Type{T1}, val::T2, ::Nothing, ::Nothing, ::Nothing, ::Nothing, allocator::F,
+    ::Type{N}, ::Type{T1}, allocator::F, val::T2, ::Nothing, ::Nothing, ::Nothing, ::Nothing,
 ) where {N,T1,T2,F}
     T = node_factory_type(N, T1, T2)
     n = allocator(N, T)
@@ -211,7 +205,7 @@ end
 end
 """Create a variable leaf, to store data."""
 @inline function node_factory(
-    ::Type{N}, ::Type{T1}, ::Nothing, feature::Integer, ::Nothing, ::Nothing, ::Nothing, allocator::F,
+    ::Type{N}, ::Type{T1}, allocator::F, ::Nothing, feature::Integer, ::Nothing, ::Nothing, ::Nothing,
 ) where {N,T1,F}
     T = node_factory_type(N, T1, DEFAULT_NODE_TYPE)
     n = allocator(N, T)
@@ -222,26 +216,37 @@ end
 end
 """Create a unary operator node."""
 @inline function node_factory(
-    ::Type{N}, ::Type{T1}, ::Nothing, ::Nothing, op::Integer, l::AbstractExpressionNode{T2}, ::Nothing, allocator::F,
+    ::Type{N}, ::Type{T1}, allocator::F, ::Nothing, ::Nothing, op::Integer, l::AbstractExpressionNode{T2}, ::Nothing,
 ) where {N,T1,T2,F}
     @assert l isa N
     T = T2  # Always prefer existing nodes, so we don't mess up references from conversion
     n = allocator(N, T)
     n.degree = 1
     n.op = op
-    n.l = l
+    n.children = [l]
     return n
 end
 """Create a binary operator node."""
 @inline function node_factory(
-    ::Type{N}, ::Type{T1}, ::Nothing, ::Nothing, op::Integer, l::AbstractExpressionNode{T2}, r::AbstractExpressionNode{T3}, allocator::F,
+    ::Type{N}, ::Type{T1}, allocator::F, ::Nothing, ::Nothing, op::Integer, l::AbstractExpressionNode{T2}, r::AbstractExpressionNode{T3},
 ) where {N,T1,T2,T3,F}
     T = promote_type(T2, T3)
     n = allocator(N, T)
     n.degree = 2
     n.op = op
-    n.l = T2 === T ? l : convert(with_type_parameters(N, T), l)
-    n.r = T3 === T ? r : convert(with_type_parameters(N, T), r)
+    n.children = [T2 === T ? l : convert(with_type_parameters(N, T), l), T3 === T ? r : convert(with_type_parameters(N, T), r)]
+    return n
+end
+"""Create an arbitrary arity operator node."""
+@inline function node_factory(
+    ::Type{N}, ::Type{T1}, allocator::F, ::Nothing, ::Nothing, op::Integer, children::AbstractExpressionNode{T2}...,
+    # ::Type{N}, ::Type{T1}, ::Nothing, ::Nothing, op::Integer, children::Vector{AbstractExpressionNode{T2}}, allocator::F,
+) where {N,T1,T2,F}
+    T = promote_type((typeof(i.val) for i in children)...)
+    n = allocator(N, T)
+    n.degree = length(children)
+    n.op = op
+    n.children = [typeof(child.val) === T ? child : convert(with_type_parameters(N,T), child) for child in children]
     return n
 end
 
@@ -267,6 +272,16 @@ function (::Type{N})(
     op::Integer, l::AbstractExpressionNode, r::AbstractExpressionNode
 ) where {N<:AbstractExpressionNode}
     return N(; op=op, l=l, r=r)
+end
+function (::Type{N})(
+    op::Integer, children::Vector{AbstractExpressionNode}
+) where {N<:AbstractExpressionNode}
+    return N(; op=op, children=children)
+end
+function (::Type{N})(
+    op::Integer, children::AbstractExpressionNode ...
+) where {N<:AbstractExpressionNode}
+    return N(; op=op, children=[child for child in children])
 end
 function (::Type{N})(var_string::String) where {N<:AbstractExpressionNode}
     Base.depwarn(
@@ -303,10 +318,11 @@ Set every field of `tree` equal to the corresponding field of `new_tree`.
 function set_node!(tree::AbstractExpressionNode, new_tree::AbstractExpressionNode)
     # First, ensure we free some memory:
     if new_tree.degree < 2 && tree.degree == 2
-        tree.r = create_dummy_node(typeof(tree))
+        # tree.r = create_dummy_node(typeof(tree))
+        pop!(tree.children)
     end
     if new_tree.degree < 1 && tree.degree >= 1
-        tree.l = create_dummy_node(typeof(tree))
+        tree.children = []
     end
 
     tree.degree = new_tree.degree
@@ -319,9 +335,13 @@ function set_node!(tree::AbstractExpressionNode, new_tree::AbstractExpressionNod
         end
     else
         tree.op = new_tree.op
-        tree.l = new_tree.l
-        if new_tree.degree == 2
-            tree.r = new_tree.r
+        # tree.children = new_tree.children
+        if tree.degree == new_tree.degree
+            for child_n in length(tree.children)
+                tree.children[child_n] = new_tree.children[child_n]
+            end
+        else
+            tree.children = [child for child in new_tree.children]
         end
     end
     return nothing

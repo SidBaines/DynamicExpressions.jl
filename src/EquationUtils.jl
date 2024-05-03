@@ -159,14 +159,19 @@ struct NodeIndex{T} <: AbstractNode
     degree::UInt8  # 0 for constant/variable, 1 for cos/sin, 2 for +/* etc.
     val::T  # If is a constant, this stores the actual value
     # ------------------- (possibly undefined below)
-    l::NodeIndex{T}  # Left child node. Only defined for degree=1 or degree=2.
-    r::NodeIndex{T}  # Right child node. Only defined for degree=2. 
+    children::Vector{NodeIndex{T}}  # Children nodes. Only defined for degree>=1.
 
     NodeIndex(::Type{_T}) where {_T} = new{_T}(0, zero(_T))
     NodeIndex(::Type{_T}, val) where {_T} = new{_T}(0, convert(_T, val))
-    NodeIndex(::Type{_T}, l::NodeIndex) where {_T} = new{_T}(1, zero(_T), l)
+    NodeIndex(::Type{_T}, l::NodeIndex) where {_T} = new{_T}(1, zero(_T), [l])
     function NodeIndex(::Type{_T}, l::NodeIndex, r::NodeIndex) where {_T}
-        return new{_T}(2, zero(_T), l, r)
+        return new{_T}(2, zero(_T), [l, r])
+    end
+    function NodeIndex(::Type{_T}, children::Vector{NodeIndex}) where {_T}
+        return new{_T}(2, zero(_T), children)
+    end
+    function NodeIndex(::Type{_T}, children::NodeIndex ...) where {_T}
+        return new{_T}(2, zero(_T), [child for child in children])
     end
 end
 # Sharing is never needed for NodeIndex,

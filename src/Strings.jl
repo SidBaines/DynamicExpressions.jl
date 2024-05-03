@@ -14,11 +14,17 @@ const OP_NAMES = Base.ImmutableDict(
     "safe_pow" => "^",
 )
 
+function dispatch_op_name(::Nothing, idx)::Vector{Char}
+    return vcat(collect("anyary_operator["), collect(string(idx)), [']'])
+end
 function dispatch_op_name(::Val{2}, ::Nothing, idx)::Vector{Char}
     return vcat(collect("binary_operator["), collect(string(idx)), [']'])
 end
 function dispatch_op_name(::Val{1}, ::Nothing, idx)::Vector{Char}
     return vcat(collect("unary_operator["), collect(string(idx)), [']'])
+end
+function dispatch_op_name(operators::AbstractOperatorEnum, idx)::Vector{Char}
+    return get_op_name(operators.anyops[idx].func)
 end
 function dispatch_op_name(::Val{2}, operators::AbstractOperatorEnum, idx)::Vector{Char}
     return get_op_name(operators.binops[idx])
@@ -144,8 +150,10 @@ function string_tree(
         end,
         branch -> if branch.degree == 1
             dispatch_op_name(Val(1), operators, branch.op)
-        else
+        elseif branch.degree == 2
             dispatch_op_name(Val(2), operators, branch.op)
+        else
+            dispatch_op_name(operators, branch.op)
         end,
         combine_op_with_inputs,
         tree,

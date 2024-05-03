@@ -1,4 +1,5 @@
 import PrecompileTools: @compile_workload, @setup_workload
+import ..UtilsModule: FuncArityPair
 
 macro ignore_domain_error(ex)
     return esc(
@@ -19,18 +20,19 @@ end
 
 Test all combinations of the given operators and types. Useful for precompilation.
 """
-function test_all_combinations(; binary_operators, unary_operators, turbo, types)
-    for binops in binary_operators,
+function test_all_combinations(; anyary_operators, binary_operators, unary_operators, turbo, types)
+    for anyops in anyary_operators,
+        binops in binary_operators,
         unaops in unary_operators,
         use_turbo in turbo,
         T in types
 
-        length(binops) == 0 && length(unaops) == 0 && continue
+        length(anyops) == 0 && length(binops) == 0 && length(unaops) == 0 && continue
         T == Float16 && use_turbo isa Val{true} && continue
 
         X = rand(T, 3, 10)
         operators = OperatorEnum(;
-            binary_operators=binops, unary_operators=unaops, define_helper_functions=false
+            anyary_operators=anyops, binary_operators=binops, unary_operators=unaops, define_helper_functions=false
         )
         x = Node(T; feature=1)
         c = Node(T; val=one(T))
@@ -38,6 +40,21 @@ function test_all_combinations(; binary_operators, unary_operators, turbo, types
         # Trivial:
         for l in (x, c)
             @ignore_domain_error eval_tree_array(l, X, operators; turbo=use_turbo)
+        end
+
+        # Anyary operators
+        # TODO (low priority) This is a bit of a mess; I'm sure it can be done more nicely but this is for the precompile so my guess is speed doesn't matter that much?
+        # TODO (high priority) uncomment this test; it fails and we need to work out why
+        for i in eachindex(anyops)
+            for permNum in 0:2^anyops[i].arity-1
+                ValOrFeatures = zeros(Bool,anyops[i].arity)
+                for inputN in 1:anyops[i].arity
+                    ValOrFeatures[inputN] = mod(permNum÷(2^(inputN-1)), 2)
+                end
+                tree = Node(i, [isVal ? Node(T;val=one(T)) : Node(T; feature=1) for isVal in ValOrFeatures]...)
+                tree = convert(Node{T}, tree)
+                @ignore_domain_error eval_tree_array(tree, X, operators; turbo=use_turbo)
+            end
         end
 
         # Binary operators
@@ -59,6 +76,7 @@ function test_all_combinations(; binary_operators, unary_operators, turbo, types
         end
 
         # Both operators
+        # TODO also add in the anyarity case here
         for i in eachindex(binary_operators),
             j1 in eachindex(unary_operators),
             j2 in eachindex(unary_operators),
@@ -79,6 +97,7 @@ end
 
 function test_functions_on_trees(::Type{T}, operators) where {T}
     local x, c, tree
+    # TODO Add some any-arity operator tests here
     num_unaops = length(operators.unaops)
     num_binops = length(operators.binops)
     @assert num_unaops > 0 && num_binops > 0
@@ -158,15 +177,25 @@ macro maybe_compile_workload(mode, ex)
     end
 end
 
+# Some small functions for testing the anyarity functions
+# function mysin(a,b,c)
+#     return a*sin(b*c)
+# end
+# function crazyfun(a,b,c,d,e)
+#     return a*sin(b*c) + d^e
+# end
+
 """`mode=:precompile` will use `@precompile_*` directives; `mode=:compile` runs."""
 function do_precompilation(; mode=:precompile)
     @maybe_setup_workload mode begin
+        anyary_operators = ((FuncArityPair((+),3), FuncArityPair((*),5)),)
         binary_operators = ((+, -, *, /),)
         unary_operators = ((sin, cos),)
         turbo = (Val(false),)
         types = (Float32, Float64)
         @maybe_compile_workload mode begin
             test_all_combinations(;
+                anyary_operators=anyary_operators,
                 binary_operators=binary_operators,
                 unary_operators=unary_operators,
                 turbo=turbo,
@@ -174,6 +203,7 @@ function do_precompilation(; mode=:precompile)
             )
         end
         operators = OperatorEnum(;
+            anyary_operators=anyary_operators[1],
             binary_operators=binary_operators[1],
             unary_operators=unary_operators[1],
             define_helper_functions=false,

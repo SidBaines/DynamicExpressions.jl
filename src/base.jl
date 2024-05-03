@@ -99,9 +99,9 @@ function tree_mapreduce(
         if t.degree == 0
             return @inline(f_leaf(t))
         elseif t.degree == 1
-            return @inline(op(@inline(f_branch(t)), inner(inner, t.l)))
+            return @inline(op(@inline(f_branch(t)), inner(inner, t.children[1])))
         else
-            return @inline(op(@inline(f_branch(t)), inner(inner, t.l), inner(inner, t.r)))
+            return @inline(op(@inline(f_branch(t)), inner(inner, t.children[1]), inner(inner, t.children[2])))
         end
     end
 
@@ -140,9 +140,9 @@ function any(f::F, tree::AbstractNode) where {F<:Function}
     if tree.degree == 0
         return @inline(f(tree))::Bool
     elseif tree.degree == 1
-        return @inline(f(tree))::Bool || any(f, tree.l)
+        return @inline(f(tree))::Bool || any(f, tree.children[1])
     else
-        return @inline(f(tree))::Bool || any(f, tree.l) || any(f, tree.r)
+        return @inline(f(tree))::Bool || any(f, tree.children[1]) || any(f, tree.children[2])
     end
 end
 
@@ -161,9 +161,9 @@ function inner_is_equal(a, b)
     if degree == 0
         return isequal_deg0(a, b)
     elseif degree == 1
-        return isequal_deg1(a, b) && inner_is_equal(a.l, b.l)
+        return isequal_deg1(a, b) && inner_is_equal(a.children[1], b.children[1])
     else
-        return isequal_deg2(a, b) && inner_is_equal(a.l, b.l) && inner_is_equal(a.r, b.r)
+        return isequal_deg2(a, b) && inner_is_equal(a.children[1], b.children[1]) && inner_is_equal(a.children[2], b.children[2])
     end
 end
 function inner_is_equal_shared(a, b, id_map_a, id_map_b)
@@ -183,11 +183,11 @@ function inner_is_equal_shared(a, b, id_map_a, id_map_b)
     result = if degree == 0
         isequal_deg0(a, b)
     elseif degree == 1
-        isequal_deg1(a, b) && inner_is_equal_shared(a.l, b.l, id_map_a, id_map_b)
+        isequal_deg1(a, b) && inner_is_equal_shared(a.children[1], b.children[1], id_map_a, id_map_b)
     else
         isequal_deg2(a, b) &&
-            inner_is_equal_shared(a.l, b.l, id_map_a, id_map_b) &&
-            inner_is_equal_shared(a.r, b.r, id_map_a, id_map_b)
+            inner_is_equal_shared(a.children[1], b.children[1], id_map_a, id_map_b) &&
+            inner_is_equal_shared(a.children[2], b.children[2], id_map_a, id_map_b)
     end
 
     id_map_a[id_a] = nothing

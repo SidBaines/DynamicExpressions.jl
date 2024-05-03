@@ -5,7 +5,7 @@ import ..OperatorEnumModule: OperatorEnum
 import ..UtilsModule: is_bad_array, fill_similar, ResultOk2
 import ..EquationUtilsModule: count_constants, index_constants, NodeIndex
 import ..EvaluateEquationModule:
-    deg0_eval, get_nuna, get_nbin, OPERATOR_LIMIT_BEFORE_SLOWDOWN
+    deg0_eval, get_nuna, get_nbin, get_nany, OPERATOR_LIMIT_BEFORE_SLOWDOWN
 import ..ExtensionInterfaceModule: _zygote_gradient
 
 """
@@ -66,6 +66,7 @@ end
 )::ResultOk2 where {T<:Number}
     nuna = get_nuna(operators)
     nbin = get_nbin(operators)
+    nany = get_nany(operators)
     deg1_branch = if nuna > OPERATOR_LIMIT_BEFORE_SLOWDOWN
         quote
             diff_deg1_eval(tree, cX, operators.unaops[op_idx], operators, direction)
@@ -92,15 +93,30 @@ end
             )
         end
     end
+    degany_branch = if nany > OPERATOR_LIMIT_BEFORE_SLOWDOWN
+        diff_degany_eval(tree, cX, operators.anyops[op_idx].func, operators, direction)
+    else
+        quote
+            Base.Cartesian.@nif(
+                $nbin,
+                i -> i == op_idx,
+                i ->
+                    diff_degany_eval(tree, cX, operators.anyops[i].func, operators, direction)
+            )
+        end
+    end
     quote
         result = if tree.degree == 0
             diff_deg0_eval(tree, cX, direction)
         elseif tree.degree == 1
             op_idx = tree.op
             $deg1_branch
-        else
+        elseif tree.degree == 2
             op_idx = tree.op
             $deg2_branch
+        else
+            op_idx = tree.op
+            $degany_branch
         end
         !result.ok && return result
         return ResultOk2(
@@ -128,7 +144,7 @@ function diff_deg1_eval(
     operators::OperatorEnum,
     direction::Integer,
 ) where {T<:Number,F}
-    result = _eval_diff_tree_array(tree.l, cX, operators, direction)
+    result = _eval_diff_tree_array(tree.children[1], cX, operators, direction)
     !result.ok && return result
 
     # TODO - add type assertions to get better speed:
@@ -152,9 +168,9 @@ function diff_deg2_eval(
     operators::OperatorEnum,
     direction::Integer,
 ) where {T<:Number,F}
-    result_l = _eval_diff_tree_array(tree.l, cX, operators, direction)
+    result_l = _eval_diff_tree_array(tree.children[1], cX, operators, direction)
     !result_l.ok && return result_l
-    result_r = _eval_diff_tree_array(tree.r, cX, operators, direction)
+    result_r = _eval_diff_tree_array(tree.children[2], cX, operators, direction)
     !result_r.ok && return result_r
 
     ar_l = result_l.x
@@ -173,6 +189,38 @@ function diff_deg2_eval(
         d_ar_l[j] = dx
     end
     return result_l
+end
+
+function diff_degany_eval( # TODO this can probably be sped up; I did this quite naively
+    tree::AbstractExpressionNode{T},
+    cX::AbstractMatrix{T},
+    op::F,
+    operators::OperatorEnum,
+    direction::Integer,
+) where {T<:Number,F}
+    xs = [similar(cX, axes(cX, 2)) for _ in 1:tree.degree]
+    dxs = [similar(cX, axes(cX, 2)) for _ in 1:tree.degree]
+    for (cn, child) in enumerate(tree.children)
+        result = _eval_diff_tree_array(child, cX, operators, direction)
+        !result.ok && return result
+        xs[cn] = result.x
+        dxs[cn] = result.dx
+    end
+    diff_op = _zygote_gradient(op, Val(2))
+
+    @inbounds @simd for j in eachindex(xs[1])
+        x = op((x[j] for x in xs)...)::T
+
+        derivs = diff_op((x[j] for x in xs)...)::Tuple{T,T}
+        dx = 0
+        for dn in indices(derivs)
+            dx += derivs[dn] * dxs[dn]
+        end
+
+        result.x[j] = x
+        result.dx[j] = dx
+    end
+    return result
 end
 
 """
@@ -263,6 +311,7 @@ end
 )::ResultOk2 where {T<:Number,variable}
     nuna = get_nuna(operators)
     nbin = get_nbin(operators)
+    nany = get_nany(operators)
     deg1_branch_skeleton = quote
         grad_deg1_eval(
             tree,
@@ -281,6 +330,17 @@ end
             index_tree,
             cX,
             operators.binops[i],
+            operators,
+            Val(variable),
+        )
+    end
+    degany_branch_skeleton = quote
+        grad_degany_eval(
+            tree,
+            n_gradients,
+            index_tree,
+            cX,
+            operators.anyops[i].func,
             operators,
             Val(variable),
         )
@@ -307,13 +367,26 @@ end
             Base.Cartesian.@nif($nbin, i -> i == op_idx, i -> $deg2_branch_skeleton)
         end
     end
+    degany_branch = if nany > OPERATOR_LIMIT_BEFORE_SLOWDOWN
+        quote
+            i = tree.op
+            $degany_branch_skeleton
+        end
+    else
+        quote
+            op_idx = tree.op
+            Base.Cartesian.@nif($nany, i -> i == op_idx, i -> $degany_branch_skeleton)
+        end
+    end
     quote
         if tree.degree == 0
             grad_deg0_eval(tree, n_gradients, index_tree, cX, Val(variable))
         elseif tree.degree == 1
             $deg1_branch
-        else
+        elseif tree.degree == 2
             $deg2_branch
+        else
+            $degany_branch
         end
     end
 end
@@ -357,9 +430,9 @@ function grad_deg1_eval(
     ::Val{variable},
 )::ResultOk2 where {T<:Number,F,variable}
     result = eval_grad_tree_array(
-        tree.l,
+        tree.children[1],
         n_gradients,
-        index_tree === nothing ? index_tree : index_tree.l,
+        index_tree === nothing ? index_tree : index_tree.children[1],
         cX,
         operators,
         Val(variable),
@@ -391,18 +464,18 @@ function grad_deg2_eval(
     ::Val{variable},
 )::ResultOk2 where {T<:Number,F,variable}
     result_l = eval_grad_tree_array(
-        tree.l,
+        tree.children[1],
         n_gradients,
-        index_tree === nothing ? index_tree : index_tree.l,
+        index_tree === nothing ? index_tree : index_tree.children[1],
         cX,
         operators,
         Val(variable),
     )
     !result_l.ok && return result_l
     result_r = eval_grad_tree_array(
-        tree.r,
+        tree.children[2],
         n_gradients,
-        index_tree === nothing ? index_tree : index_tree.r,
+        index_tree === nothing ? index_tree : index_tree.children[2],
         cX,
         operators,
         Val(variable),
@@ -426,6 +499,51 @@ function grad_deg2_eval(
     end
 
     return result_l
+end
+
+function grad_degany_eval(
+    tree::AbstractExpressionNode{T},
+    n_gradients,
+    index_tree::Union{NodeIndex,Nothing},
+    cX::AbstractMatrix{T},
+    op::F,
+    operators::OperatorEnum,
+    ::Val{variable},
+)::ResultOk2 where {T<:Number,F,variable}
+
+
+
+
+
+    cumultors = [similar(cX, axes(cX, 2)) for _ in 1:tree.degree]
+    dcumultors = [similar(cX, axes(cX, 2)) for _ in 1:tree.degree]
+    for (cn, child) in enumerate(tree.children)
+        result = eval_grad_tree_array(
+            child,
+            n_gradients,
+            index_tree === nothing ? index_tree : index_tree.children[cn],
+            cX,
+            operators,
+            Val(variable),
+        )
+        !result.ok && return result
+        cumultors[cn] = result.x
+        dcumultors[cn] = result.dx
+    end
+    diff_op = _zygote_gradient(op, Val(2))
+    @inbounds @simd for j in axes(dcumulators[1], 2)
+        x = op((cumultors[i][j] for i in 1:tree.degree)...)::T
+        derivs = diff_op((cumultors[i][j] for i in 1:tree.degree)...)::Tuple{T,T}
+        result.x[j] = x
+        for k in axes(dcumulators[1], 1)
+            dx = 0
+            for dn in indices(derivs)
+                dx += derivs[dn] * dcumulators[dn][k, j]
+            end
+            result.dx[k, j] = dx
+        end
+    end
+    return result
 end
 
 end

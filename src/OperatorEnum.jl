@@ -10,7 +10,8 @@ Defines an enum over operators, along with their derivatives.
 - `binops`: A tuple of binary operators. Scalar input type.
 - `unaops`: A tuple of unary operators. Scalar input type.
 """
-struct OperatorEnum{B,U} <: AbstractOperatorEnum
+struct OperatorEnum{A,B,U} <: AbstractOperatorEnum
+    anyops::A
     binops::B
     unaops::U
 end
@@ -23,7 +24,8 @@ Defines an enum over operators, along with their derivatives.
 - `binops`: A tuple of binary operators.
 - `unaops`: A tuple of unary operators.
 """
-struct GenericOperatorEnum{B,U} <: AbstractOperatorEnum
+struct GenericOperatorEnum{A,B,U} <: AbstractOperatorEnum
+    anyops::A
     binops::B
     unaops::U
 end

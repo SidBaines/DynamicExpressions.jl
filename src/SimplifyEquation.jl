@@ -7,6 +7,7 @@ import ..UtilsModule: isbad, isgood
 
 _una_op_kernel(f::F, l::T) where {F,T} = f(l)
 _bin_op_kernel(f::F, l::T, r::T) where {F,T} = f(l, r)
+_any_op_kernel(f::F, cs::T ...) where {F,T} = f(cs...)
 
 is_commutative(::typeof(*)) = true
 is_commutative(::typeof(+)) = true
@@ -27,33 +28,37 @@ function combine_operators(tree::Node{T}, operators::AbstractOperatorEnum) where
     if tree.degree == 0
         return tree
     elseif tree.degree == 1
-        tree.l = combine_operators(tree.l, operators)
+        tree.children[1] = combine_operators(tree.children[1], operators)
     elseif tree.degree == 2
-        tree.l = combine_operators(tree.l, operators)
-        tree.r = combine_operators(tree.r, operators)
+        tree.children[1] = combine_operators(tree.children[1], operators)
+        tree.children[2] = combine_operators(tree.children[2], operators)
+    else
+        for cn in 1:tree.degree
+            tree.children[cn] = combine_operators(tree.children[cn], operators)
+        end
     end
 
     top_level_constant =
-        tree.degree == 2 && (is_node_constant(tree.l) || is_node_constant(tree.r))
+        tree.degree == 2 && (is_node_constant(tree.children[1]) || is_node_constant(tree.children[2]))
     if tree.degree == 2 && is_commutative(operators.binops[tree.op]) && top_level_constant
         # TODO: Does this break SymbolicRegression.jl due to the different names of operators?
         op = tree.op
         # Put the constant in r. Need to assume var in left for simplification assumption.
-        if is_node_constant(tree.l)
-            tmp = tree.r
-            tree.r = tree.l
-            tree.l = tmp
+        if is_node_constant(tree.children[1])
+            tmp = tree.children[2]
+            tree.children[2] = tree.children[1]
+            tree.children[1] = tmp
         end
-        topconstant = tree.r.val
+        topconstant = tree.children[2].val
         # Simplify down first
-        below = tree.l
+        below = tree.children[1]
         if below.degree == 2 && below.op == op
-            if is_node_constant(below.l)
+            if is_node_constant(below.children[1])
                 tree = below
-                tree.l.val = _bin_op_kernel(operators.binops[op], tree.l.val, topconstant)
-            elseif is_node_constant(below.r)
+                tree.children[1].val = _bin_op_kernel(operators.binops[op], tree.children[1].val, topconstant)
+            elseif is_node_constant(below.children[2])
                 tree = below
-                tree.r.val = _bin_op_kernel(operators.binops[op], tree.r.val, topconstant)
+                tree.children[2].val = _bin_op_kernel(operators.binops[op], tree.children[2].val, topconstant)
             end
         end
     end
@@ -62,42 +67,42 @@ function combine_operators(tree::Node{T}, operators::AbstractOperatorEnum) where
 
         # Currently just simplifies subtraction. (can't assume both plus and sub are operators)
         # Not commutative, so use different op.
-        if is_node_constant(tree.l)
-            if tree.r.degree == 2 && tree.op == tree.r.op
-                if is_node_constant(tree.r.l)
+        if is_node_constant(tree.children[1])
+            if tree.children[2].degree == 2 && tree.op == tree.children[2].op
+                if is_node_constant(tree.children[2].children[1])
                     #(const - (const - var)) => (var - const)
-                    l = tree.l
-                    r = tree.r
-                    simplified_const = (r.l.val - l.val) #neg(sub(l.val, r.l.val))
-                    tree.l = tree.r.r
-                    tree.r = l
-                    tree.r.val = simplified_const
-                elseif is_node_constant(tree.r.r)
+                    l = tree.children[1]
+                    r = tree.children[2]
+                    simplified_const = (r.children[1].val - l.val) #neg(sub(l.val, r.children[1].val))
+                    tree.children[1] = tree.children[2].children[2]
+                    tree.children[2] = l
+                    tree.children[2].val = simplified_const
+                elseif is_node_constant(tree.children[2].children[2])
                     #(const - (var - const)) => (const - var)
-                    l = tree.l
-                    r = tree.r
-                    simplified_const = l.val + r.r.val #plus(l.val, r.r.val)
-                    tree.r = tree.r.l
-                    tree.l.val = simplified_const
+                    l = tree.children[1]
+                    r = tree.children[2]
+                    simplified_const = l.val + r.children[2].val #plus(l.val, r.children[2].val)
+                    tree.children[2] = tree.children[2].children[1]
+                    tree.children[1].val = simplified_const
                 end
             end
-        else #tree.r is a constant
-            if tree.l.degree == 2 && tree.op == tree.l.op
-                if is_node_constant(tree.l.l)
+        else #tree.children[2] is a constant
+            if tree.children[1].degree == 2 && tree.op == tree.children[1].op
+                if is_node_constant(tree.children[1].children[1])
                     #((const - var) - const) => (const - var)
-                    l = tree.l
-                    r = tree.r
-                    simplified_const = l.l.val - r.val#sub(l.l.val, r.val)
-                    tree.r = tree.l.r
-                    tree.l = r
-                    tree.l.val = simplified_const
-                elseif is_node_constant(tree.l.r)
+                    l = tree.children[1]
+                    r = tree.children[2]
+                    simplified_const = l.children[1].val - r.val#sub(l.children[1].val, r.val)
+                    tree.children[2] = tree.children[1].children[2]
+                    tree.children[1] = r
+                    tree.children[1].val = simplified_const
+                elseif is_node_constant(tree.children[1].children[2])
                     #((var - const) - const) => (var - const)
-                    l = tree.l
-                    r = tree.r
-                    simplified_const = r.val + l.r.val #plus(r.val, l.r.val)
-                    tree.l = tree.l.l
-                    tree.r.val = simplified_const
+                    l = tree.children[1]
+                    r = tree.children[2]
+                    simplified_const = r.val + l.children[2].val #plus(r.val, l.children[2].val)
+                    tree.children[1] = tree.children[1].children[1]
+                    tree.children[2].val = simplified_const
                 end
             end
         end
@@ -111,8 +116,10 @@ function combine_children!(operators, p::N, c::N...) where {T,N<:AbstractExpress
     all(isgood, vals) || return p
     out = if length(c) == 1
         _una_op_kernel(operators.unaops[p.op], vals...)
-    else
+    elseif length(c) == 2
         _bin_op_kernel(operators.binops[p.op], vals...)
+    else
+        _any_op_kernel(operators.anyops[p.op], vals...)
     end
     isgood(out) || return p
     new_node = constructorof(N)(T; val=convert(T, out))

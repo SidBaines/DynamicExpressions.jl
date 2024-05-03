@@ -98,8 +98,9 @@ function eval_tree_array(
     return eval_tree_array(tree, cX, operators; turbo, bumper)
 end
 
-get_nuna(::Type{<:OperatorEnum{B,U}}) where {B,U} = counttuple(U)
-get_nbin(::Type{<:OperatorEnum{B}}) where {B} = counttuple(B)
+get_nuna(::Type{<:OperatorEnum{A,B,U}}) where {A,B,U} = counttuple(U)
+get_nbin(::Type{<:OperatorEnum{A,B}}) where {A,B} = counttuple(B)
+get_nany(::Type{<:OperatorEnum{A}}) where {A} = counttuple(A)
 
 function _eval_tree_array(
     tree::AbstractExpressionNode{T},
@@ -119,12 +120,27 @@ function _eval_tree_array(
     elseif tree.degree == 1
         op_idx = tree.op
         return dispatch_deg1_eval(tree, cX, op_idx, operators, Val(turbo))
-    else
+    elseif tree.degree == 2
         # TODO - add op(op2(x, y), z) and op(x, op2(y, z))
         # op(x, y), where x, y are constants or variables.
         op_idx = tree.op
         return dispatch_deg2_eval(tree, cX, op_idx, operators, Val(turbo))
+    else
+        op_idx = tree.op
+        return dispatch_degany_eval(tree, cX, op_idx, operators, Val(turbo))
+
     end
+end
+
+function degany_eval( # TODO: NB I haven't tried to optimise this; feels like there's probably a lot to gain here
+    # cumulators::AbstractVector{AbstractVector{T}}, op::F, ::Val{false} # TODO: Why won't it work with AbstractVector??
+    cumulators::Vector{Vector{T}}, op::F, ::Val{false}
+)::ResultOk where {T<:Number,F}
+    @inbounds @simd for j in eachindex(cumulators[1])
+        x = op((cumulator[j] for cumulator in cumulators)...)::T
+        cumulators[1][j] = x
+    end
+    return ResultOk(cumulators[1], true)
 end
 
 function deg2_eval(
@@ -157,6 +173,73 @@ function deg0_eval(
     end
 end
 
+# TODO (HIGH priority) making this a regular function rather than generated for now, because I can't get it to work; fixing this seems like a pretty high-yield way of getting a speedup
+# @generated function dispatch_degany_eval(
+function dispatch_degany_eval(
+    tree::AbstractExpressionNode{T},
+    cX::AbstractMatrix{T},
+    op_idx::Integer,
+    operators::OperatorEnum,
+    ::Val{turbo},
+) where {T<:Number,turbo}
+    # nany = get_nany(operators)
+    # long_compilation_time = nany > OPERATOR_LIMIT_BEFORE_SLOWDOWN
+    # if long_compilation_time
+    if true
+        # return quote
+        if true
+            @assert(length(tree.children) == tree.degree)
+            results = [similar(cX, axes(cX, 2)) for _ in 1:tree.degree]
+            # print(tree.degree)
+            for (nc, child) in enumerate(tree.children)
+                result = _eval_tree_array(child, cX, operators, Val(turbo))
+                !result.ok && return result
+                @return_on_nonfinite_array result.x
+                # print(nc)
+                # print(typeof(results))
+                # print("\t")
+                # print(typeof(result))
+                # print("\t")
+                # print(length(results))
+                # print("\t")
+                # print(length(result))
+                # print("\n")
+                results[nc] = result.x
+            end
+            # op(x, y), for any x or y
+            # degany_eval(results, operators.anyops[op_idx].func, Val(turbo))
+            return degany_eval(results, operators.anyops[op_idx].func, Val(turbo))
+        end
+    end
+    # return quote
+    #     return Base.Cartesian.@nif(
+    #         $nany,
+    #         i -> i == op_idx,
+    #         i -> let op = operators.anyops[i]
+    #             if (Base.Cartesian.@nall op.arity (d->(tree.children[d].degree==0)))
+    #             # if all(child.degree == 0 for child in tree.children)
+    #                 degany_allc0_eval(tree, cX, op, Val(turbo))
+    #             else
+    #                 # for (nc, child) in enumerate(tree.children)
+    #                 #     result = _eval_tree_array(child, cX, operators, Val(turbo))
+    #                 #     !result.ok && return result
+    #                 #     @return_on_nonfinite_array result.X
+    #                 #     results[nc] = result.x
+    #                 # end
+    #                 # degany_eval(results, op, Val(turbo))
+    #                 Base.Cartesian.@nexprs (
+    #                     op.arity;
+    #                     j -> let result_j = _eval_tree_array(tree.children[j], cX, operators, Val(turbo))
+    #                         !result_j.ok && return result_j
+    #                         @return_on_nonfinite_array result_j.X
+    #                     end
+    #                 )
+    #                 degany_eval((Base.Cartesian.@ntuple op.arity j->result_j.x)..., op.func, Val(turbo))
+    #             end
+    #         end
+    #     )
+    # end
+end
 @generated function dispatch_deg2_eval(
     tree::AbstractExpressionNode{T},
     cX::AbstractMatrix{T},
@@ -168,10 +251,10 @@ end
     long_compilation_time = nbin > OPERATOR_LIMIT_BEFORE_SLOWDOWN
     if long_compilation_time
         return quote
-            result_l = _eval_tree_array(tree.l, cX, operators, Val(turbo))
+            result_l = _eval_tree_array(tree.children[1], cX, operators, Val(turbo))
             !result_l.ok && return result_l
             @return_on_nonfinite_array result_l.x
-            result_r = _eval_tree_array(tree.r, cX, operators, Val(turbo))
+            result_r = _eval_tree_array(tree.children[2], cX, operators, Val(turbo))
             !result_r.ok && return result_r
             @return_on_nonfinite_array result_r.x
             # op(x, y), for any x or y
@@ -183,25 +266,25 @@ end
             $nbin,
             i -> i == op_idx,
             i -> let op = operators.binops[i]
-                if tree.l.degree == 0 && tree.r.degree == 0
+                if tree.children[1].degree == 0 && tree.children[2].degree == 0
                     deg2_l0_r0_eval(tree, cX, op, Val(turbo))
-                elseif tree.r.degree == 0
-                    result_l = _eval_tree_array(tree.l, cX, operators, Val(turbo))
+                elseif tree.children[2].degree == 0
+                    result_l = _eval_tree_array(tree.children[1], cX, operators, Val(turbo))
                     !result_l.ok && return result_l
                     @return_on_nonfinite_array result_l.x
                     # op(x, y), where y is a constant or variable but x is not.
                     deg2_r0_eval(tree, result_l.x, cX, op, Val(turbo))
-                elseif tree.l.degree == 0
-                    result_r = _eval_tree_array(tree.r, cX, operators, Val(turbo))
+                elseif tree.children[1].degree == 0
+                    result_r = _eval_tree_array(tree.children[2], cX, operators, Val(turbo))
                     !result_r.ok && return result_r
                     @return_on_nonfinite_array result_r.x
                     # op(x, y), where x is a constant or variable but y is not.
                     deg2_l0_eval(tree, result_r.x, cX, op, Val(turbo))
                 else
-                    result_l = _eval_tree_array(tree.l, cX, operators, Val(turbo))
+                    result_l = _eval_tree_array(tree.children[1], cX, operators, Val(turbo))
                     !result_l.ok && return result_l
                     @return_on_nonfinite_array result_l.x
-                    result_r = _eval_tree_array(tree.r, cX, operators, Val(turbo))
+                    result_r = _eval_tree_array(tree.children[2], cX, operators, Val(turbo))
                     !result_r.ok && return result_r
                     @return_on_nonfinite_array result_r.x
                     # op(x, y), for any x or y
@@ -222,7 +305,7 @@ end
     long_compilation_time = nuna > OPERATOR_LIMIT_BEFORE_SLOWDOWN
     if long_compilation_time
         return quote
-            result = _eval_tree_array(tree.l, cX, operators, Val(turbo))
+            result = _eval_tree_array(tree.children[1], cX, operators, Val(turbo))
             !result.ok && return result
             @return_on_nonfinite_array result.x
             deg1_eval(result.x, operators.unaops[op_idx], Val(turbo))
@@ -235,21 +318,21 @@ end
             $nuna,
             i -> i == op_idx,
             i -> let op = operators.unaops[i]
-                if tree.l.degree == 2 && tree.l.l.degree == 0 && tree.l.r.degree == 0
+                if tree.children[1].degree == 2 && tree.children[1].children[1].degree == 0 && tree.children[1].children[2].degree == 0
                     # op(op2(x, y)), where x, y, z are constants or variables.
-                    l_op_idx = tree.l.op
+                    l_op_idx = tree.children[1].op
                     dispatch_deg1_l2_ll0_lr0_eval(
                         tree, cX, op, l_op_idx, operators.binops, Val(turbo)
                     )
-                elseif tree.l.degree == 1 && tree.l.l.degree == 0
+                elseif tree.children[1].degree == 1 && tree.children[1].children[1].degree == 0
                     # op(op2(x)), where x is a constant or variable.
-                    l_op_idx = tree.l.op
+                    l_op_idx = tree.children[1].op
                     dispatch_deg1_l1_ll0_eval(
                         tree, cX, op, l_op_idx, operators.unaops, Val(turbo)
                     )
                 else
                     # op(x), for any x.
-                    result = _eval_tree_array(tree.l, cX, operators, Val(turbo))
+                    result = _eval_tree_array(tree.children[1], cX, operators, Val(turbo))
                     !result.ok && return result
                     @return_on_nonfinite_array result.x
                     deg1_eval(result.x, op, Val(turbo))
@@ -302,9 +385,9 @@ end
 function deg1_l2_ll0_lr0_eval(
     tree::AbstractExpressionNode{T}, cX::AbstractMatrix{T}, op::F, op_l::F2, ::Val{false}
 ) where {T<:Number,F,F2}
-    if tree.l.l.constant && tree.l.r.constant
-        val_ll = tree.l.l.val
-        val_lr = tree.l.r.val
+    if tree.children[1].children[1].constant && tree.children[1].children[2].constant
+        val_ll = tree.children[1].children[1].val
+        val_lr = tree.children[1].children[2].val
         @return_on_check val_ll cX
         @return_on_check val_lr cX
         x_l = op_l(val_ll, val_lr)::T
@@ -312,10 +395,10 @@ function deg1_l2_ll0_lr0_eval(
         x = op(x_l)::T
         @return_on_check x cX
         return ResultOk(fill_similar(x, cX, axes(cX, 2)), true)
-    elseif tree.l.l.constant
-        val_ll = tree.l.l.val
+    elseif tree.children[1].children[1].constant
+        val_ll = tree.children[1].children[1].val
         @return_on_check val_ll cX
-        feature_lr = tree.l.r.feature
+        feature_lr = tree.children[1].children[2].feature
         cumulator = similar(cX, axes(cX, 2))
         @inbounds @simd for j in axes(cX, 2)
             x_l = op_l(val_ll, cX[feature_lr, j])::T
@@ -323,9 +406,9 @@ function deg1_l2_ll0_lr0_eval(
             cumulator[j] = x
         end
         return ResultOk(cumulator, true)
-    elseif tree.l.r.constant
-        feature_ll = tree.l.l.feature
-        val_lr = tree.l.r.val
+    elseif tree.children[1].children[2].constant
+        feature_ll = tree.children[1].children[1].feature
+        val_lr = tree.children[1].children[2].val
         @return_on_check val_lr cX
         cumulator = similar(cX, axes(cX, 2))
         @inbounds @simd for j in axes(cX, 2)
@@ -335,8 +418,8 @@ function deg1_l2_ll0_lr0_eval(
         end
         return ResultOk(cumulator, true)
     else
-        feature_ll = tree.l.l.feature
-        feature_lr = tree.l.r.feature
+        feature_ll = tree.children[1].children[1].feature
+        feature_lr = tree.children[1].children[2].feature
         cumulator = similar(cX, axes(cX, 2))
         @inbounds @simd for j in axes(cX, 2)
             x_l = op_l(cX[feature_ll, j], cX[feature_lr, j])::T
@@ -351,8 +434,8 @@ end
 function deg1_l1_ll0_eval(
     tree::AbstractExpressionNode{T}, cX::AbstractMatrix{T}, op::F, op_l::F2, ::Val{false}
 ) where {T<:Number,F,F2}
-    if tree.l.l.constant
-        val_ll = tree.l.l.val
+    if tree.children[1].children[1].constant
+        val_ll = tree.children[1].children[1].val
         @return_on_check val_ll cX
         x_l = op_l(val_ll)::T
         @return_on_check x_l cX
@@ -360,7 +443,7 @@ function deg1_l1_ll0_eval(
         @return_on_check x cX
         return ResultOk(fill_similar(x, cX, axes(cX, 2)), true)
     else
-        feature_ll = tree.l.l.feature
+        feature_ll = tree.children[1].children[1].feature
         cumulator = similar(cX, axes(cX, 2))
         @inbounds @simd for j in axes(cX, 2)
             x_l = op_l(cX[feature_ll, j])::T
@@ -375,28 +458,28 @@ end
 function deg2_l0_r0_eval(
     tree::AbstractExpressionNode{T}, cX::AbstractMatrix{T}, op::F, ::Val{false}
 ) where {T<:Number,F}
-    if tree.l.constant && tree.r.constant
-        val_l = tree.l.val
+    if tree.children[1].constant && tree.children[2].constant
+        val_l = tree.children[1].val
         @return_on_check val_l cX
-        val_r = tree.r.val
+        val_r = tree.children[2].val
         @return_on_check val_r cX
         x = op(val_l, val_r)::T
         @return_on_check x cX
         return ResultOk(fill_similar(x, cX, axes(cX, 2)), true)
-    elseif tree.l.constant
+    elseif tree.children[1].constant
         cumulator = similar(cX, axes(cX, 2))
-        val_l = tree.l.val
+        val_l = tree.children[1].val
         @return_on_check val_l cX
-        feature_r = tree.r.feature
+        feature_r = tree.children[2].feature
         @inbounds @simd for j in axes(cX, 2)
             x = op(val_l, cX[feature_r, j])::T
             cumulator[j] = x
         end
         return ResultOk(cumulator, true)
-    elseif tree.r.constant
+    elseif tree.children[2].constant
         cumulator = similar(cX, axes(cX, 2))
-        feature_l = tree.l.feature
-        val_r = tree.r.val
+        feature_l = tree.children[1].feature
+        val_r = tree.children[2].val
         @return_on_check val_r cX
         @inbounds @simd for j in axes(cX, 2)
             x = op(cX[feature_l, j], val_r)::T
@@ -405,10 +488,34 @@ function deg2_l0_r0_eval(
         return ResultOk(cumulator, true)
     else
         cumulator = similar(cX, axes(cX, 2))
-        feature_l = tree.l.feature
-        feature_r = tree.r.feature
+        feature_l = tree.children[1].feature
+        feature_r = tree.children[2].feature
         @inbounds @simd for j in axes(cX, 2)
             x = op(cX[feature_l, j], cX[feature_r, j])::T
+            cumulator[j] = x
+        end
+        return ResultOk(cumulator, true)
+    end
+end
+
+# op(x, y) for x and y variable/constant
+function degany_allc0_eval(
+    tree::AbstractExpressionNode{T}, cX::AbstractMatrix{T}, op::F, ::Val{false}
+) where {T<:Number,F}
+    # TODO maybe there's room for improvement here? I did this quite naively
+    if all(child.constant for child in tree.children)
+        vals = Zeros(T, tree.degree)
+        for (cn, child) in enumerate(tree.children)
+            vals[cn] = child.val
+            @return_on_check vals[cn] cX
+        end
+        x = op(vals...)::T
+        @return_on_check x cX
+        return ResultOk(fill_similar(x, cX, axes(cX, 2)), true)
+    else
+        cumulator = similar(cX, axes(cX, 2))
+        @inbounds @simd for j in axes(cX, 2)
+            x = op((child.constant ? child.val : cX[child.feature, j] for child in tree.children)...)::T
             cumulator[j] = x
         end
         return ResultOk(cumulator, true)
@@ -423,8 +530,8 @@ function deg2_l0_eval(
     op::F,
     ::Val{false},
 ) where {T<:Number,F}
-    if tree.l.constant
-        val = tree.l.val
+    if tree.children[1].constant
+        val = tree.children[1].val
         @return_on_check val cX
         @inbounds @simd for j in eachindex(cumulator)
             x = op(val, cumulator[j])::T
@@ -432,7 +539,7 @@ function deg2_l0_eval(
         end
         return ResultOk(cumulator, true)
     else
-        feature = tree.l.feature
+        feature = tree.children[1].feature
         @inbounds @simd for j in eachindex(cumulator)
             x = op(cX[feature, j], cumulator[j])::T
             cumulator[j] = x
@@ -449,8 +556,8 @@ function deg2_r0_eval(
     op::F,
     ::Val{false},
 ) where {T<:Number,F}
-    if tree.r.constant
-        val = tree.r.val
+    if tree.children[2].constant
+        val = tree.children[2].val
         @return_on_check val cX
         @inbounds @simd for j in eachindex(cumulator)
             x = op(cumulator[j], val)::T
@@ -458,7 +565,7 @@ function deg2_r0_eval(
         end
         return ResultOk(cumulator, true)
     else
-        feature = tree.r.feature
+        feature = tree.children[2].feature
         @inbounds @simd for j in eachindex(cumulator)
             x = op(cumulator[j], cX[feature, j])::T
             cumulator[j] = x
@@ -479,6 +586,7 @@ over an entire array when the values are all the same.
 ) where {T<:Number}
     nuna = get_nuna(operators)
     nbin = get_nbin(operators)
+    nany = get_nany(operators)
     deg1_branch = if nuna > OPERATOR_LIMIT_BEFORE_SLOWDOWN
         quote
             deg1_eval_constant(tree, operators.unaops[op_idx], operators)::ResultOk{Vector{T}}
@@ -509,15 +617,33 @@ over an entire array when the values are all the same.
             )
         end
     end
+    degany_branch = if nany > OPERATOR_LIMIT_BEFORE_SLOWDOWN
+        quote
+            degany_eval_constant(tree, operators.anyops[op_idx].func, operators)::ResultOk{Vector{T}}
+        end
+    else
+        quote
+            Base.Cartesian.@nif(
+                $nany,
+                i -> i == op_idx,
+                i -> degany_eval_constant(
+                    tree, operators.anyops[i].func, operators
+                )::ResultOk{Vector{T}}
+            )
+        end
+    end
     return quote
         if tree.degree == 0
             return deg0_eval_constant(tree)::ResultOk{Vector{T}}
         elseif tree.degree == 1
             op_idx = tree.op
             return $deg1_branch
-        else
+        elseif tree.degree == 2
             op_idx = tree.op
             return $deg2_branch
+        else
+            op_idx = tree.op
+            return $degany_branch
         end
     end
 end
@@ -530,7 +656,7 @@ end
 function deg1_eval_constant(
     tree::AbstractExpressionNode{T}, op::F, operators::OperatorEnum
 ) where {T<:Number,F}
-    result = dispatch_constant_tree(tree.l, operators)
+    result = dispatch_constant_tree(tree.children[1], operators)
     !result.ok && return result
     output = op(result.x[])::T
     return ResultOk([output], isfinite(output))::ResultOk{Vector{T}}
@@ -539,11 +665,24 @@ end
 function deg2_eval_constant(
     tree::AbstractExpressionNode{T}, op::F, operators::OperatorEnum
 ) where {T<:Number,F}
-    cumulator = dispatch_constant_tree(tree.l, operators)
+    cumulator = dispatch_constant_tree(tree.children[1], operators)
     !cumulator.ok && return cumulator
-    result_r = dispatch_constant_tree(tree.r, operators)
+    result_r = dispatch_constant_tree(tree.children[2], operators)
     !result_r.ok && return result_r
     output = op(cumulator.x[], result_r.x[])::T
+    return ResultOk([output], isfinite(output))::ResultOk{Vector{T}}
+end
+
+function degany_eval_constant( # TODO this can probably be sped up; I did this quite naively
+    tree::AbstractExpressionNode{T}, op::F, operators::OperatorEnum
+) where {T<:Number,F}
+    vals = zeros(T,tree.degree)
+    for (cn, child) in enumerate(tree.children)
+        cumulator = dispatch_constant_tree(child, operators)
+        !cumulator.ok && return cumulator
+        vals[cn] = cumulator.x[]
+    end
+    output = op(vals...)::T
     return ResultOk([output], isfinite(output))::ResultOk{Vector{T}}
 end
 
@@ -564,6 +703,7 @@ end
 )::ResultOk where {T<:Number,T1}
     nuna = get_nuna(operators)
     nbin = get_nbin(operators)
+    nany = get_nany(operators)
     quote
         if tree.degree == 0
             if tree.constant
@@ -578,12 +718,19 @@ end
                 i -> i == op_idx,
                 i -> deg1_diff_eval(tree, cX, operators.unaops[i], operators)
             )
-        else
+        elseif tree.degree == 2
             op_idx = tree.op
             Base.Cartesian.@nif(
                 $nbin,
                 i -> i == op_idx,
                 i -> deg2_diff_eval(tree, cX, operators.binops[i], operators)
+            )
+        else
+            op_idx = tree.op
+            Base.Cartesian.@nif(
+                $nany,
+                i -> i == op_idx,
+                i -> degany_diff_eval(tree, cX, operators.anyops[i].func, operators)
             )
         end
     end
@@ -592,7 +739,7 @@ end
 function deg1_diff_eval(
     tree::AbstractExpressionNode{T1}, cX::AbstractMatrix{T}, op::F, operators::OperatorEnum
 )::ResultOk where {T<:Number,F,T1}
-    left = _differentiable_eval_tree_array(tree.l, cX, operators)
+    left = _differentiable_eval_tree_array(tree.children[1], cX, operators)
     !left.ok && return left
     out = op.(left.x)
     return ResultOk(out, all(isfinite, out))
@@ -601,11 +748,24 @@ end
 function deg2_diff_eval(
     tree::AbstractExpressionNode{T1}, cX::AbstractMatrix{T}, op::F, operators::OperatorEnum
 )::ResultOk where {T<:Number,F,T1}
-    left = _differentiable_eval_tree_array(tree.l, cX, operators)
+    left = _differentiable_eval_tree_array(tree.children[1], cX, operators)
     !left.ok && return left
-    right = _differentiable_eval_tree_array(tree.r, cX, operators)
+    right = _differentiable_eval_tree_array(tree.children[2], cX, operators)
     !right.ok && return right
     out = op.(left.x, right.x)
+    return ResultOk(out, all(isfinite, out))
+end
+
+function degany_diff_eval( # TODO this can probably be sped up; I did this quite naively
+    tree::AbstractExpressionNode{T1}, cX::AbstractMatrix{T}, op::F, operators::OperatorEnum
+)::ResultOk where {T<:Number,F,T1}
+    cumulators = [similar(cX, axes(cX, 2)) for _ in 1:tree.degree]
+    for (cn, child) in enumerate(tree.children)
+        ch = _differentiable_eval_tree_array(child, cX, operators)
+        !ch.ok && return left
+        cumulators[cn] = ch.x
+    end
+    out = op.((chx for chx in cumulators))
     return ResultOk(out, all(isfinite, out))
 end
 
@@ -700,9 +860,13 @@ function _eval_tree_array_generic(
         return deg1_eval_generic(
             tree, cX, operators.unaops[tree.op], operators, Val(throw_errors)
         )
-    else
+    elseif tree.degree == 2
         return deg2_eval_generic(
             tree, cX, operators.binops[tree.op], operators, Val(throw_errors)
+        )
+    else
+        return degany_eval_generic(
+            tree, cX, operators.anyops[tree.op].func, operators, Val(throw_errors)
         )
     end
 end
@@ -710,7 +874,7 @@ end
 function deg1_eval_generic(
     tree, cX, op::F, operators::GenericOperatorEnum, ::Val{throw_errors}
 ) where {F,throw_errors}
-    left, complete = eval_tree_array(tree.l, cX, operators)
+    left, complete = eval_tree_array(tree.children[1], cX, operators)
     !throw_errors && !complete && return nothing, false
     !throw_errors && !hasmethod(op, Tuple{typeof(left)}) && return nothing, false
     return op(left), true
@@ -719,14 +883,28 @@ end
 function deg2_eval_generic(
     tree, cX, op::F, operators::GenericOperatorEnum, ::Val{throw_errors}
 ) where {F,throw_errors}
-    left, complete = eval_tree_array(tree.l, cX, operators)
+    left, complete = eval_tree_array(tree.children[1], cX, operators)
     !throw_errors && !complete && return nothing, false
-    right, complete = eval_tree_array(tree.r, cX, operators)
+    right, complete = eval_tree_array(tree.children[2], cX, operators)
     !throw_errors && !complete && return nothing, false
     !throw_errors &&
         !hasmethod(op, Tuple{typeof(left),typeof(right)}) &&
         return nothing, false
     return op(left, right), true
+end
+
+function degany_eval_generic( # TODO this can probably be sped up; I did this quite naively
+    tree, cX, op::F, operators::GenericOperatorEnum, ::Val{throw_errors}
+) where {F,throw_errors}
+    cumulators = [similar(cX, axes(cX, 2)) for _ in 1:tree.degree]
+    for (cn, child) in enumerate(tree.children)
+        cumulators[cn], complete = eval_tree_array(child, cX, operators)
+        !throw_errors && !complete && return nothing, false
+    end
+    !throw_errors &&
+        !hasmethod(op, cumulators...) &&
+        return nothing, false
+    return op(cumulators...), true
 end
 
 end
