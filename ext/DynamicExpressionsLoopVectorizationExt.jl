@@ -7,15 +7,29 @@ using DynamicExpressions.EvaluateEquationModule: @return_on_check
 import DynamicExpressions.EvaluateEquationModule:
     deg1_eval,
     deg2_eval,
+    degany_eval,
     deg1_l2_ll0_lr0_eval,
     deg1_l1_ll0_eval,
     deg2_l0_r0_eval,
     deg2_l0_eval,
-    deg2_r0_eval
+    deg2_r0_eval,
+    degany_allc0_eval
 import DynamicExpressions.ExtensionInterfaceModule:
     _is_loopvectorization_loaded, bumper_kern1!, bumper_kern2!
 
 _is_loopvectorization_loaded(::Int) = true
+
+# TODO Maybe add the below? I removed it for now because I don't really know what turbo is doing / applying it 'naively' as below causes tests to fail
+# function degany_eval( # TODO: NB I haven't tried to optimise this; feels like there's probably a lot to gain here
+#     # cumulators::AbstractVector{AbstractVector{T}}, op::F, ::Val{false} # TODO: Why won't it work with AbstractVector??
+#     cumulators::Vector{Vector{T}}, op::F, ::Val{true}
+# )::ResultOk where {T<:Number,F}
+#     @turbo for j in eachindex(cumulators[1])
+#         x = op((cumulator[j] for cumulator in cumulators)...)
+#         cumulators[1][j] = x
+#     end
+#     return ResultOk(cumulators[1], true)
+# end
 
 function deg2_eval(
     cumulator_l::AbstractVector{T}, cumulator_r::AbstractVector{T}, op::F, ::Val{true}
@@ -40,9 +54,9 @@ end
 function deg1_l2_ll0_lr0_eval(
     tree::AbstractExpressionNode{T}, cX::AbstractMatrix{T}, op::F, op_l::F2, ::Val{true}
 ) where {T<:Number,F,F2}
-    if tree.l.l.constant && tree.l.r.constant
-        val_ll = tree.l.l.val
-        val_lr = tree.l.r.val
+    if tree.children[1].children[1].constant && tree.children[1].children[2].constant
+        val_ll = tree.children[1].children[1].val
+        val_lr = tree.children[1].children[2].val
         @return_on_check val_ll cX
         @return_on_check val_lr cX
         x_l = op_l(val_ll, val_lr)::T
@@ -50,10 +64,10 @@ function deg1_l2_ll0_lr0_eval(
         x = op(x_l)::T
         @return_on_check x cX
         return ResultOk(fill_similar(x, cX, axes(cX, 2)), true)
-    elseif tree.l.l.constant
-        val_ll = tree.l.l.val
+    elseif tree.children[1].children[1].constant
+        val_ll = tree.children[1].children[1].val
         @return_on_check val_ll cX
-        feature_lr = tree.l.r.feature
+        feature_lr = tree.children[1].children[2].feature
         cumulator = similar(cX, axes(cX, 2))
         @turbo for j in axes(cX, 2)
             x_l = op_l(val_ll, cX[feature_lr, j])
@@ -61,9 +75,9 @@ function deg1_l2_ll0_lr0_eval(
             cumulator[j] = x
         end
         return ResultOk(cumulator, true)
-    elseif tree.l.r.constant
-        feature_ll = tree.l.l.feature
-        val_lr = tree.l.r.val
+    elseif tree.children[1].children[2].constant
+        feature_ll = tree.children[1].children[1].feature
+        val_lr = tree.children[1].children[2].val
         @return_on_check val_lr cX
         cumulator = similar(cX, axes(cX, 2))
         @turbo for j in axes(cX, 2)
@@ -73,8 +87,8 @@ function deg1_l2_ll0_lr0_eval(
         end
         return ResultOk(cumulator, true)
     else
-        feature_ll = tree.l.l.feature
-        feature_lr = tree.l.r.feature
+        feature_ll = tree.children[1].children[1].feature
+        feature_lr = tree.children[1].children[2].feature
         cumulator = similar(cX, axes(cX, 2))
         @turbo for j in axes(cX, 2)
             x_l = op_l(cX[feature_ll, j], cX[feature_lr, j])
@@ -88,8 +102,8 @@ end
 function deg1_l1_ll0_eval(
     tree::AbstractExpressionNode{T}, cX::AbstractMatrix{T}, op::F, op_l::F2, ::Val{true}
 ) where {T<:Number,F,F2}
-    if tree.l.l.constant
-        val_ll = tree.l.l.val
+    if tree.children[1].children[1].constant
+        val_ll = tree.children[1].children[1].val
         @return_on_check val_ll cX
         x_l = op_l(val_ll)::T
         @return_on_check x_l cX
@@ -97,7 +111,7 @@ function deg1_l1_ll0_eval(
         @return_on_check x cX
         return ResultOk(fill_similar(x, cX, axes(cX, 2)), true)
     else
-        feature_ll = tree.l.l.feature
+        feature_ll = tree.children[1].children[1].feature
         cumulator = similar(cX, axes(cX, 2))
         @turbo for j in axes(cX, 2)
             x_l = op_l(cX[feature_ll, j])
@@ -111,28 +125,28 @@ end
 function deg2_l0_r0_eval(
     tree::AbstractExpressionNode{T}, cX::AbstractMatrix{T}, op::F, ::Val{true}
 ) where {T<:Number,F}
-    if tree.l.constant && tree.r.constant
-        val_l = tree.l.val
+    if tree.children[1].constant && tree.children[2].constant
+        val_l = tree.children[1].val
         @return_on_check val_l cX
-        val_r = tree.r.val
+        val_r = tree.children[2].val
         @return_on_check val_r cX
         x = op(val_l, val_r)::T
         @return_on_check x cX
         return ResultOk(fill_similar(x, cX, axes(cX, 2)), true)
-    elseif tree.l.constant
+    elseif tree.children[1].constant
         cumulator = similar(cX, axes(cX, 2))
-        val_l = tree.l.val
+        val_l = tree.children[1].val
         @return_on_check val_l cX
-        feature_r = tree.r.feature
+        feature_r = tree.children[2].feature
         @turbo for j in axes(cX, 2)
             x = op(val_l, cX[feature_r, j])
             cumulator[j] = x
         end
         return ResultOk(cumulator, true)
-    elseif tree.r.constant
+    elseif tree.children[2].constant
         cumulator = similar(cX, axes(cX, 2))
-        feature_l = tree.l.feature
-        val_r = tree.r.val
+        feature_l = tree.children[1].feature
+        val_r = tree.children[2].val
         @return_on_check val_r cX
         @turbo for j in axes(cX, 2)
             x = op(cX[feature_l, j], val_r)
@@ -141,8 +155,8 @@ function deg2_l0_r0_eval(
         return ResultOk(cumulator, true)
     else
         cumulator = similar(cX, axes(cX, 2))
-        feature_l = tree.l.feature
-        feature_r = tree.r.feature
+        feature_l = tree.children[1].feature
+        feature_r = tree.children[2].feature
         @turbo for j in axes(cX, 2)
             x = op(cX[feature_l, j], cX[feature_r, j])
             cumulator[j] = x
@@ -159,8 +173,8 @@ function deg2_l0_eval(
     op::F,
     ::Val{true},
 ) where {T<:Number,F}
-    if tree.l.constant
-        val = tree.l.val
+    if tree.children[1].constant
+        val = tree.children[1].val
         @return_on_check val cX
         @turbo for j in eachindex(cumulator)
             x = op(val, cumulator[j])
@@ -168,7 +182,7 @@ function deg2_l0_eval(
         end
         return ResultOk(cumulator, true)
     else
-        feature = tree.l.feature
+        feature = tree.children[1].feature
         @turbo for j in eachindex(cumulator)
             x = op(cX[feature, j], cumulator[j])
             cumulator[j] = x
@@ -184,8 +198,8 @@ function deg2_r0_eval(
     op::F,
     ::Val{true},
 ) where {T<:Number,F}
-    if tree.r.constant
-        val = tree.r.val
+    if tree.children[2].constant
+        val = tree.children[2].val
         @return_on_check val cX
         @turbo for j in eachindex(cumulator)
             x = op(cumulator[j], val)
@@ -193,7 +207,7 @@ function deg2_r0_eval(
         end
         return ResultOk(cumulator, true)
     else
-        feature = tree.r.feature
+        feature = tree.children[2].feature
         @turbo for j in eachindex(cumulator)
             x = op(cumulator[j], cX[feature, j])
             cumulator[j] = x
@@ -201,6 +215,30 @@ function deg2_r0_eval(
         return ResultOk(cumulator, true)
     end
 end
+
+# TODO Maybe add the below? I removed it for now because I don't really know what turbo is doing / applying it 'naively' as below causes tests to fail
+# function degany_allc0_eval(
+#     tree::AbstractExpressionNode{T}, cX::AbstractMatrix{T}, op::F, ::Val{true}
+# ) where {T<:Number,F}
+#     # TODO maybe there's room for improvement here? I did this quite naively
+#     if all(child.constant for child in tree.children)
+#         vals = Zeros(T, tree.degree)
+#         for (cn, child) in enumerate(tree.children)
+#             vals[cn] = child.val
+#             @return_on_check vals[cn] cX
+#         end
+#         x = op(vals...)
+#         @return_on_check x cX
+#         return ResultOk(fill_similar(x, cX, axes(cX, 2)), true)
+#     else
+#         cumulator = similar(cX, axes(cX, 2))
+#         @turbo for j in axes(cX, 2)
+#             x = op((child.constant ? child.val : cX[child.feature, j] for child in tree.children)...)
+#             cumulator[j] = x
+#         end
+#         return ResultOk(cumulator, true)
+#     end
+# end
 
 ## Interface with Bumper.jl
 function bumper_kern1!(op::F, cumulator, ::Val{true}) where {F}

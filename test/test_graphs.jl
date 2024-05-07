@@ -13,41 +13,41 @@ include("test_params.jl")
     tree = sin(base_tree) + base_tree
 
     # The base tree is exactly the same:
-    @test tree.l.l === tree.r
-    @test hash(tree.l.l) == hash(tree.r)
+    @test tree.children[1].children[1] === tree.children[2]
+    @test hash(tree.children[1].children[1]) == hash(tree.children[2])
 
     # Now, let's change something in the base tree:
     old_tree = deepcopy(tree)
-    base_tree.l.l = x3 * x2 - 1.5
+    base_tree.children[1].children[1] = x3 * x2 - 1.5
 
     # Should change:
     @test string_tree(tree, operators) != string_tree(old_tree, operators)
 
     # But the linkage should be preserved:
-    @test tree.l.l === tree.r
-    @test hash(tree.l.l) == hash(tree.r)
+    @test tree.children[1].children[1] === tree.children[2]
+    @test hash(tree.children[1].children[1]) == hash(tree.children[2])
 
     # When we copy with the normal copy, the sharing breaks:
     copy_without_sharing = copy_node(tree; break_sharing=Val(true))
-    @test !(copy_without_sharing.l.l === copy_without_sharing.r)
+    @test !(copy_without_sharing.children[1].children[1] === copy_without_sharing.children[2])
 
     # But with the sharing preserved in the copy, it should be the same:
     copy_with_sharing = copy_node(tree)
-    @test copy_with_sharing.l.l === copy_with_sharing.r
+    @test copy_with_sharing.children[1].children[1] === copy_with_sharing.children[2]
 
     # We can also tweak the new tree, and the edits should be propagated:
-    copied_base_tree = copy_with_sharing.l.l
+    copied_base_tree = copy_with_sharing.children[1].children[1]
     # (First, assert that it is the same as the old base tree)
     @test string_tree(copied_base_tree, operators) == string_tree(base_tree, operators)
 
     # Now, let's tweak the new tree's base tree:
-    copied_base_tree.l.l = x1 * x2 * 5.2 - exp(x3)
+    copied_base_tree.children[1].children[1] = x1 * x2 * 5.2 - exp(x3)
     # "exp" should appear *twice* now:
     copy_with_sharing
     @test length(collect(eachmatch(r"exp", string_tree(copy_with_sharing, operators)))) == 2
-    @test copy_with_sharing.l.l === copy_with_sharing.r
-    @test hash(copy_with_sharing.l.l) == hash(copy_with_sharing.r)
-    @test string_tree(copy_with_sharing.l.l, operators) != string_tree(base_tree, operators)
+    @test copy_with_sharing.children[1].children[1] === copy_with_sharing.children[2]
+    @test hash(copy_with_sharing.children[1].children[1]) == hash(copy_with_sharing.children[2])
+    @test string_tree(copy_with_sharing.children[1].children[1], operators) != string_tree(base_tree, operators)
 
     # We also test whether `convert` breaks shared children.
     # The node type here should be Float64.
@@ -56,7 +56,7 @@ include("test_params.jl")
     float32_tree = convert(GraphNode{Float32}, tree)
     @test typeof(float32_tree).parameters[1] == Float32
     # The linkage should be kept:
-    @test float32_tree.l.l === float32_tree.r
+    @test float32_tree.children[1].children[1] === float32_tree.children[2]
 end
 
 @testset "Macro tests" begin
@@ -132,9 +132,9 @@ end
                     Node(T; feature=copy(tree.feature))
                 end
             elseif tree.degree == 1
-                Node(copy(tree.op), _copy_node(tree.l))
+                Node(copy(tree.op), _copy_node(tree.children[1]))
             else
-                Node(copy(tree.op), _copy_node(tree.l), _copy_node(tree.r))
+                Node(copy(tree.op), _copy_node(tree.children[1]), _copy_node(tree.children[2]))
             end
         end
         true_ex = quote
@@ -146,9 +146,9 @@ end
                         Node(T; feature=copy(tree.feature))
                     end
                 elseif tree.degree == 1
-                    Node(copy(tree.op), _copy_node(tree.l))
+                    Node(copy(tree.op), _copy_node(tree.children[1]))
                 else
-                    Node(copy(tree.op), _copy_node(tree.l), _copy_node(tree.r))
+                    Node(copy(tree.op), _copy_node(tree.children[1]), _copy_node(tree.children[2]))
                 end
             end
             function _copy_node(tree::Node{T}, id_map::AbstractDict;)::Node{T} where {T}
@@ -163,12 +163,12 @@ end
                                 Node(T; feature=copy(tree.feature))
                             end
                         elseif tree.degree == 1
-                            Node(copy(tree.op), _copy_node(tree.l, id_map))
+                            Node(copy(tree.op), _copy_node(tree.children[1], id_map))
                         else
                             Node(
                                 copy(tree.op),
-                                _copy_node(tree.l, id_map),
-                                _copy_node(tree.r, id_map),
+                                _copy_node(tree.children[1], id_map),
+                                _copy_node(tree.children[2], id_map),
                             )
                         end
                     end
@@ -305,8 +305,8 @@ end
         # as this would be redundant (since we are already
         # tracing the original expression when using a node index):
         @test get_indices(node_index) == [1, 2, 3, 4, 1, 2, 3, 4]
-        @test tree.r.l.l.l.r.l == GraphNode(Float64; val=3.2)
-        @test node_index.r.l.l.l.r.l.val == 1
+        @test tree.children[2].children[1].children[1].children[1].children[2].children[1] == GraphNode(Float64; val=3.2)
+        @test node_index.children[2].children[1].children[1].children[1].children[2].children[1].val == 1
     end
 
     @testset "Various base utils" begin
@@ -352,7 +352,7 @@ end
         operators = OperatorEnum(; binary_operators=[+, -, *], unary_operators=[cos, exp])
         x = GraphNode(Float32; feature=1)
         tree = x + 1.0
-        @test tree.l === x
+        @test tree.children[1] === x
         @test typeof(tree) === GraphNode{Float32}
 
         # Detect error from Float32(1im)
@@ -365,7 +365,7 @@ end
 
         x = GraphNode(ComplexF64; feature=1)
         @test hash(x + 1) == hash(GraphNode(1, x, GraphNode(; val=1.0 + 0.0im)))
-        @test (x + 1).l === x
+        @test (x + 1).children[1] === x
     end
 end
 

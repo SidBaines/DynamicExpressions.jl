@@ -16,7 +16,7 @@ atol = 200
 
     num_plus = count(Base.Fix1(===, tree), uniform_samples)
     num_x = count(Base.Fix1(===, x), uniform_samples)
-    num_cos = count(Base.Fix1(===, tree.l), uniform_samples)
+    num_cos = count(Base.Fix1(===, tree.children[1]), uniform_samples)
 
     @test isapprox(num_plus, num_samples ÷ 3; atol)
     @test isapprox(num_x, num_samples ÷ 3; atol)
@@ -28,7 +28,7 @@ atol = 200
     end
     num_plus = count(Base.Fix1(===, tree), broken_sharing_samples)
     num_x = count(Base.Fix1(===, x), broken_sharing_samples)
-    num_cos = count(Base.Fix1(===, tree.l), broken_sharing_samples)
+    num_cos = count(Base.Fix1(===, tree.children[1]), broken_sharing_samples)
 
     @test isapprox(num_plus, num_samples ÷ 4; atol)
     @test isapprox(num_x, num_samples ÷ 2; atol)
@@ -50,7 +50,7 @@ end
     end
     num_plus = count(Base.Fix1(===, tree), specific_weighted_samples)
     num_x = count(Base.Fix1(===, x), specific_weighted_samples)
-    num_cos = count(Base.Fix1(===, tree.l), specific_weighted_samples)
+    num_cos = count(Base.Fix1(===, tree.children[1]), specific_weighted_samples)
 
     @test isapprox(num_plus, num_samples * 15 ÷ 100; atol)
     @test isapprox(num_x, num_samples * 10 ÷ 100; atol)
@@ -73,7 +73,7 @@ end
     end
     num_plus = count(Base.Fix1(===, tree), broken_sharing_weighted_samples)
     num_x = count(Base.Fix1(===, x), broken_sharing_weighted_samples)
-    num_cos = count(Base.Fix1(===, tree.l), broken_sharing_weighted_samples)
+    num_cos = count(Base.Fix1(===, tree.children[1]), broken_sharing_weighted_samples)
 
     @test isapprox(num_plus, num_samples * 5 ÷ 100; atol)
     @test isapprox(num_x, num_samples * 20 ÷ 100; atol)

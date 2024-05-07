@@ -8,21 +8,21 @@ function random_node(tree::Node{T})::Node{T} where {T}
     if tree.degree == 0
         return tree
     end
-    b = count_nodes(tree.l)
+    b = count_nodes(tree.children[1])
     c = if tree.degree == 2
-        count_nodes(tree.r)
+        count_nodes(tree.children[2])
     else
         0
     end
 
     i = rand(1:(1 + b + c))
     if i <= b
-        return random_node(tree.l)
+        return random_node(tree.children[1])
     elseif i == b + 1
         return tree
     end
 
-    return random_node(tree.r)
+    return random_node(tree.children[2])
 end
 
 function make_random_leaf(nfeatures::Integer, ::Type{T})::Node{T} where {T}

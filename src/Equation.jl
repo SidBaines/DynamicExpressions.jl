@@ -242,7 +242,8 @@ end
     ::Type{N}, ::Type{T1}, allocator::F, ::Nothing, ::Nothing, op::Integer, children::AbstractExpressionNode{T2}...,
     # ::Type{N}, ::Type{T1}, ::Nothing, ::Nothing, op::Integer, children::Vector{AbstractExpressionNode{T2}}, allocator::F,
 ) where {N,T1,T2,F}
-    T = promote_type((typeof(i.val) for i in children)...)
+    # T = promote_type((typeof(i.val) for i in children)...)
+    T = T2
     n = allocator(N, T)
     n.degree = length(children)
     n.op = op
@@ -336,13 +337,7 @@ function set_node!(tree::AbstractExpressionNode, new_tree::AbstractExpressionNod
     else
         tree.op = new_tree.op
         # tree.children = new_tree.children
-        if tree.degree == new_tree.degree
-            for child_n in length(tree.children)
-                tree.children[child_n] = new_tree.children[child_n]
-            end
-        else
-            tree.children = [child for child in new_tree.children]
-        end
+        tree.children = [child for child in new_tree.children] # TODO check this doesn't ruin anything (eg., will changing tree affect new_tree?)
     end
     return nothing
 end

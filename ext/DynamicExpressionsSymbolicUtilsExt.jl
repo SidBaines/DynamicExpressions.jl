@@ -39,9 +39,10 @@ function parse_tree_to_eqs(
     end
     # Collect the next children
     # TODO: Type instability!
-    children = tree.degree == 2 ? (tree.l, tree.r) : (tree.l,)
+    # children = tree.degree == 2 ? (tree.children[1], tree.children[2]) : (tree.children[1],)
+    children = Tuple(tree.children) # TODO is this really necessary?
     # Get the operation
-    op = tree.degree == 2 ? operators.binops[tree.op] : operators.unaops[tree.op]
+    op = tree.degree == 2 ? operators.binops[tree.op] : (tree.degree == 1 ? operators.unaops[tree.op] : operators.anyops[tree.op].func)
     # Create an N tuple of Numbers for each argument
     dtypes = map(x -> Number, 1:(tree.degree))
     #

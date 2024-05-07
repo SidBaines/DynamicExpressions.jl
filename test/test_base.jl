@@ -122,8 +122,8 @@ end
     @test Node(Float64; val=1.0) ∈ ctree
     @test Node(Float32; val=1.0) ∈ ctree
     @test Node(Float64; val=1.1) ∉ ctree
-    @test ctree.l ∈ ctree
-    @test ctree.l * 2 ∉ ctree
+    @test ctree.children[1] ∈ ctree
+    @test ctree.children[1] * 2 ∉ ctree
 end
 
 @testset "isempty" begin
@@ -133,8 +133,8 @@ end
 
 @testset "length" begin
     @test length(tree) == 24
-    @test length(tree.l) == 16
-    @test length(tree.r) == 24 - 16 - 1
+    @test length(tree.children[1]) == 16
+    @test length(tree.children[2]) == 24 - 16 - 1
 end
 
 @testset "mapreduce" begin

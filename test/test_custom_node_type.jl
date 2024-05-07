@@ -5,12 +5,14 @@ mutable struct MyCustomNode{A,B} <: AbstractNode
     degree::Int
     val1::A
     val2::B
-    l::MyCustomNode{A,B}
-    r::MyCustomNode{A,B}
+    # l::MyCustomNode{A,B}
+    # r::MyCustomNode{A,B}
+    children::Vector{MyCustomNode{A,B}}
 
     MyCustomNode(val1, val2) = new{typeof(val1),typeof(val2)}(0, val1, val2)
-    MyCustomNode(val1, val2, l) = new{typeof(val1),typeof(val2)}(1, val1, val2, l)
-    MyCustomNode(val1, val2, l, r) = new{typeof(val1),typeof(val2)}(2, val1, val2, l, r)
+    MyCustomNode(val1, val2, l) = new{typeof(val1),typeof(val2)}(1, val1, val2, [l])
+    MyCustomNode(val1, val2, l, r) = new{typeof(val1),typeof(val2)}(2, val1, val2, [l,r])
+    MyCustomNode(val1, val2, children::Vector) = new{typeof(val1),typeof(val2)}(length(children), val1, val2, children)
 end
 
 node1 = MyCustomNode(1.0, 2)
@@ -24,7 +26,7 @@ node2 = MyCustomNode(1.5, 3, node1)
 
 @test typeof(node2) == MyCustomNode{Float64,Int}
 @test node2.degree == 1
-@test node2.l.degree == 0
+@test node2.children[1].degree == 0
 @test count_depth(node2) == 2
 @test count_nodes(node2) == 2
 

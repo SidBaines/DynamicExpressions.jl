@@ -37,9 +37,9 @@ eqn2 = simplify(eqn)
 # This should remove the ^ operator:
 tree = convert(Node, eqn2, operators)
 # Make sure one of the nodes is now 2.0:
-@test (tree.l.constant ? tree.l : tree.r).val == 2
+@test (tree.children[1].constant ? tree.children[1] : tree.children[2]).val == 2
 # Make sure the other node is x1:
-@test (!tree.l.constant ? tree.l : tree.r).feature == 1
+@test (!tree.children[1].constant ? tree.children[1] : tree.children[2]).feature == 1
 
 # Finally, let's try converting a product, and ensure
 # that SymbolicUtils does not convert it to a power:

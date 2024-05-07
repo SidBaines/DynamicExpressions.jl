@@ -7,7 +7,7 @@ import ..UtilsModule: isbad, isgood
 
 _una_op_kernel(f::F, l::T) where {F,T} = f(l)
 _bin_op_kernel(f::F, l::T, r::T) where {F,T} = f(l, r)
-_any_op_kernel(f::F, cs::T ...) where {F,T} = f(cs...)
+_any_op_kernel(f::F, cs::NTuple) where {F} = f(cs...)
 
 is_commutative(::typeof(*)) = true
 is_commutative(::typeof(+)) = true
